@@ -94,14 +94,14 @@ export async function activate(context: vscode.ExtensionContext) {
   const hooksConfigured = context.globalState.get<boolean>('hooksConfigured', false);
   if (!hooksConfigured) {
     const answer = await vscode.window.showInformationMessage(
-      `Claude Dashboard found ${store.getProjects().length} projects. Auto-configure real-time hooks for live session tracking?`,
+      `Claude Code Dashboard found ${store.getProjects().length} projects. Auto-configure real-time hooks for live session tracking?`,
       'Yes, configure hooks',
       'Skip'
     );
     if (answer === 'Yes, configure hooks') {
       await hookManager.injectHooks();
       await context.globalState.update('hooksConfigured', true);
-      vscode.window.showInformationMessage('Claude Dashboard hooks configured. Real-time tracking is active.');
+      vscode.window.showInformationMessage('Claude Code Dashboard hooks configured. Real-time tracking is active.');
     }
   }
 

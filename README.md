@@ -6,6 +6,31 @@ A VS Code extension that reads your local Claude Code session data and turns it 
 
 ---
 
+## Screenshots
+
+![Dashboard Overview](images/screenshots/dashboard.png)
+*Main dashboard — projects, stats, weekly recap, and cost overview*
+
+![Dashboard Charts](images/screenshots/dashboard-chart.png)
+*Charts tab — 30-day token trend, usage by project, projected monthly cost*
+
+![Dashboard Insights](images/screenshots/dashbpard-insights.png)
+*Insights tab — heatmap, tool usage, productivity by hour, hot files*
+
+![Projects List](images/screenshots/projects.png)
+*Sidebar — all Claude Code projects with per-project stats*
+
+![Session History](images/screenshots/project-sessions.png)
+*Project detail — full session history with prompt previews and token breakdown*
+
+![Tool Usage](images/screenshots/project-tools.png)
+*Tools tab — which tools Claude used most across sessions*
+
+![File Explorer](images/screenshots/project-files.png)
+*Files tab — every file Claude touched, with access counts*
+
+---
+
 ## Requirements
 
 - VS Code 1.85 or later
@@ -99,7 +124,7 @@ Click any project in the sidebar or dashboard to open its detail view.
 
 ## Configuration
 
-Open VS Code settings (`Cmd+,` / `Ctrl+,`) and search for **Claude Dashboard**.
+Open VS Code settings (`Cmd+,` / `Ctrl+,`) and search for **Claude Code Dashboard**.
 
 | Setting | Default | Description |
 |---|---|---|
@@ -122,9 +147,9 @@ All commands are available via the VS Code command palette (`Cmd+Shift+P` / `Ctr
 
 | Command | Description |
 |---|---|
-| `Claude Dashboard: Open Full Dashboard` | Opens or focuses the main dashboard panel |
-| `Claude Dashboard: Open Project Detail` | Opens a project by ID (used internally by sidebar clicks) |
-| `Claude Dashboard: Refresh` | Re-scans all projects and sessions |
+| `Claude Code Dashboard: Open Full Dashboard` | Opens or focuses the main dashboard panel |
+| `Claude Code Dashboard: Open Project Detail` | Opens a project by ID (used internally by sidebar clicks) |
+| `Claude Code Dashboard: Refresh` | Re-scans all projects and sessions |
 
 The refresh button (⟳) also appears in the sidebar title bar.
 
@@ -184,7 +209,7 @@ The extension polls `.dashboard-events.jsonl` every 500ms for new lines and push
 
 **Dashboard shows no projects**
 - Verify `~/.claude/projects/` exists and contains subdirectories
-- Run the **Claude Dashboard: Refresh** command
+- Run the **Claude Code Dashboard: Refresh** command
 - Check the VS Code Output panel (select "Claude Code Dashboard" in the dropdown) for errors
 
 **Sessions not updating in real time**
@@ -212,3 +237,9 @@ The extension only reads files in `~/.claude/` and your project directories. It 
 - `~/.claude/settings.json` — hook configuration (with user consent; backup made first)
 - `~/.claude/.dashboard-events.jsonl` — live events written by the injected hooks
 - `~/.claude/settings.json.bak` — backup of settings before hook injection
+
+---
+
+## License
+
+[AGPL-3.0](LICENSE) — free to use and modify, but any modified version must also be released under the same license. Commercial reselling is not permitted.

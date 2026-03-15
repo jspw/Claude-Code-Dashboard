@@ -34,7 +34,7 @@ export class AlertManager {
     const used = (monthlyTokens / 1_000_000).toFixed(2);
     const limit = (budget / 1_000_000).toFixed(2);
     vscode.window.showWarningMessage(
-      `Claude Dashboard: Monthly token budget exceeded! Used ${used}M of ${limit}M tokens this month.`
+      `Claude Code Dashboard: Monthly token budget exceeded! Used ${used}M of ${limit}M tokens this month.`
     );
   }
 
@@ -55,14 +55,14 @@ export class AlertManager {
       if (now - lastAlert < oneDayMs) { return; }
       this.context.globalState.update('lastCostBudgetExceededAlert', now);
       vscode.window.showWarningMessage(
-        `Claude Dashboard: Monthly cost budget exceeded! Spent $${costUsd.toFixed(2)} of $${budgetUsd.toFixed(2)} budget.`
+        `Claude Code Dashboard: Monthly cost budget exceeded! Spent $${costUsd.toFixed(2)} of $${budgetUsd.toFixed(2)} budget.`
       );
     } else {
       const lastAlert = this.context.globalState.get<number>('lastCostBudget80Alert', 0);
       if (now - lastAlert < oneDayMs) { return; }
       this.context.globalState.update('lastCostBudget80Alert', now);
       vscode.window.showWarningMessage(
-        `Claude Dashboard: 80% of monthly cost budget used. Spent $${costUsd.toFixed(2)} of $${budgetUsd.toFixed(2)}.`
+        `Claude Code Dashboard: 80% of monthly cost budget used. Spent $${costUsd.toFixed(2)} of $${budgetUsd.toFixed(2)}.`
       );
     }
   }
@@ -108,7 +108,7 @@ export class AlertManager {
     const moreProjects = activeProjects.size > 3 ? ` +${activeProjects.size - 3} more` : '';
 
     vscode.window.showInformationMessage(
-      `Claude Dashboard weekly digest: ${tokensStr} tokens used across ${activeProjects.size} project(s) last week. Projects: ${projectList}${moreProjects}.`
+      `Claude Code Dashboard weekly digest: ${tokensStr} tokens used across ${activeProjects.size} project(s) last week. Projects: ${projectList}${moreProjects}.`
     );
   }
 }

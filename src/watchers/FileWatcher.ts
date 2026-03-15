@@ -37,10 +37,10 @@ export class FileWatcher {
       });
 
       this.watcher.on('error', (err) => {
-        console.error('Claude Dashboard FileWatcher error:', err);
+        console.error('Claude Code Dashboard FileWatcher error:', err);
       });
     } catch (e) {
-      console.error('Claude Dashboard: failed to start file watcher on', projectsDir, e);
+      console.error('Claude Code Dashboard: failed to start file watcher on', projectsDir, e);
     }
 
     context.subscriptions.push({

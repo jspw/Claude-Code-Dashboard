@@ -108,7 +108,7 @@ export default function Dashboard({
     <div className="p-6 space-y-4 max-w-5xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold mb-1">Claude Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-1">Claude Code Dashboard</h1>
         <p className="text-sm opacity-60">{stats?.totalProjects ?? 0} projects · {stats?.activeSessionCount ?? 0} active sessions</p>
       </div>
 

@@ -4,7 +4,7 @@
   "description": "Real-time dashboard for all your Claude Code projects — sessions, usage, tokens, and more.",
   "version": "0.1.0",
   "publisher": "jspw",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
       "activitybar": [
         {
           "id": "claude-dashboard",
-          "title": "Claude Dashboard",
+          "title": "Claude Code Dashboard",
           "icon": "$(pulse)"
         }
       ]
@@ -57,17 +57,17 @@
       {
         "command": "claudeDashboard.openDashboard",
         "title": "Open Full Dashboard",
-        "category": "Claude Dashboard"
+        "category": "Claude Code Dashboard"
       },
       {
         "command": "claudeDashboard.openProject",
         "title": "Open Project Detail",
-        "category": "Claude Dashboard"
+        "category": "Claude Code Dashboard"
       },
       {
         "command": "claudeDashboard.refresh",
         "title": "Refresh",
-        "category": "Claude Dashboard",
+        "category": "Claude Code Dashboard",
         "icon": "$(refresh)"
       }
     ],
@@ -81,7 +81,7 @@
       ]
     },
     "configuration": {
-      "title": "Claude Dashboard",
+      "title": "Claude Code Dashboard",
       "properties": {
         "claudeDashboard.monthlyTokenBudget": {
           "type": "number",

@@ -22,7 +22,7 @@ export class DashboardPanel {
     }
     const panel = vscode.window.createWebviewPanel(
       'claudeDashboard',
-      'Claude Dashboard',
+      'Claude Code Dashboard',
       vscode.ViewColumn.One,
       { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'webview-ui', 'dist')] }
     );
