@@ -1,6 +1,6 @@
 # Claude Code Dashboard
 
-A VS Code extension that reads your local Claude Code session data and turns it into a real-time usage dashboard — tokens, costs, active sessions, project analytics, and more.
+A VS Code extension that show you exactly what Claude is doing — tokens, costs, sessions, and insights across all your projects, right inside VS Code.
 
 **No API key required. No data leaves your machine.**
 
@@ -8,25 +8,25 @@ A VS Code extension that reads your local Claude Code session data and turns it 
 
 ## Screenshots
 
-![Dashboard Overview](images/screenshots/dashboard.png)
+![Dashboard Overview](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/dashboard.png)
 *Main dashboard — projects, stats, weekly recap, and cost overview*
 
-![Dashboard Charts](images/screenshots/dashboard-chart.png)
+![Dashboard Charts](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/dashboard-chart.png)
 *Charts tab — 30-day token trend, usage by project, projected monthly cost*
 
-![Dashboard Insights](images/screenshots/dashbpard-insights.png)
+![Dashboard Insights](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/dashbpard-insights.png)
 *Insights tab — heatmap, tool usage, productivity by hour, hot files*
 
-![Projects List](images/screenshots/projects.png)
+![Projects List](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/projects.png)
 *Sidebar — all Claude Code projects with per-project stats*
 
-![Session History](images/screenshots/project-sessions.png)
+![Session History](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/project-sessions.png)
 *Project detail — full session history with prompt previews and token breakdown*
 
-![Tool Usage](images/screenshots/project-tools.png)
+![Tool Usage](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/project-tools.png)
 *Tools tab — which tools Claude used most across sessions*
 
-![File Explorer](images/screenshots/project-files.png)
+![File Explorer](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/project-files.png)
 *Files tab — every file Claude touched, with access counts*
 
 ---
