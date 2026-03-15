@@ -37,6 +37,7 @@ export interface EfficiencyStats {
   avgToolCallsPerSession: number;
   avgSessionDurationMin: number;
   firstTurnResolutionRate: number;
+  avgActiveRatio: number;
 }
 
 export interface WeeklyRecap {
@@ -104,6 +105,9 @@ export interface Session {
   thinkingTokens: number;         // tokens consumed by thinking blocks
   cacheHitRate: number;           // cacheRead / (input + cacheCreation + cacheRead) * 100
   subagentCostUsd: number;        // cost attributed to child subagent sessions
+  idleTimeMs: number | null;      // sum of gaps >5min between assistant→user turns
+  activeTimeMs: number | null;    // durationMs - idleTimeMs
+  activityRatio: number | null;   // activeTimeMs / durationMs * 100
 }
 
 export interface Turn {
@@ -353,7 +357,8 @@ export class DashboardStore extends EventEmitter {
           ...s,
           isActiveSession: liveResult!.available ? liveResult!.ids.has(s.id) : s.isActiveSession,
         }));
-        this.projects.set(encodedId, cached.project);
+        const isActive = sessions.some(s => s.isActiveSession);
+        this.projects.set(encodedId, { ...cached.project, isActive });
         this.sessions.set(encodedId, sessions);
         this.subagentSessions.set(encodedId, cached.subagentSessions ?? []);
         return;
@@ -876,6 +881,8 @@ export class DashboardStore extends EventEmitter {
     let totalDurationMs = 0;
     let durationCount = 0;
     let singlePromptSessions = 0;
+    let totalActiveRatio = 0;
+    let activeRatioCount = 0;
 
     for (const [, sessions] of this.sessions) {
       for (const session of sessions) {
@@ -888,6 +895,10 @@ export class DashboardStore extends EventEmitter {
           durationCount++;
         }
         if (session.promptCount === 1) { singlePromptSessions++; }
+        if (session.activityRatio !== null && session.activityRatio !== undefined) {
+          totalActiveRatio += session.activityRatio;
+          activeRatioCount++;
+        }
       }
     }
 
@@ -896,6 +907,7 @@ export class DashboardStore extends EventEmitter {
       avgToolCallsPerSession: totalSessions > 0 ? Math.round((totalToolCalls / totalSessions) * 10) / 10 : 0,
       avgSessionDurationMin: durationCount > 0 ? Math.round((totalDurationMs / durationCount / 60000) * 10) / 10 : 0,
       firstTurnResolutionRate: totalSessions > 0 ? Math.round((singlePromptSessions / totalSessions) * 1000) / 10 : 0,
+      avgActiveRatio: activeRatioCount > 0 ? Math.round((totalActiveRatio / activeRatioCount) * 10) / 10 : 0,
     };
   }
 
@@ -1052,12 +1064,17 @@ export class DashboardStore extends EventEmitter {
     // Efficiency
     let totalTokens = 0, totalPrompts = 0, totalToolCalls = 0;
     let totalDurationMs = 0, durationCount = 0, singlePromptSessions = 0;
+    let totalActiveRatio = 0, activeRatioCount = 0;
     for (const s of sessions) {
       totalTokens    += s.totalTokens;
       totalPrompts   += s.promptCount;
       totalToolCalls += s.toolCallCount;
       if (s.durationMs !== null) { totalDurationMs += s.durationMs; durationCount++; }
       if (s.promptCount === 1) { singlePromptSessions++; }
+      if (s.activityRatio !== null && s.activityRatio !== undefined) {
+        totalActiveRatio += s.activityRatio;
+        activeRatioCount++;
+      }
     }
     const n = sessions.length;
     const efficiency: EfficiencyStats = {
@@ -1065,6 +1082,7 @@ export class DashboardStore extends EventEmitter {
       avgToolCallsPerSession:  n > 0             ? Math.round((totalToolCalls / n) * 10) / 10 : 0,
       avgSessionDurationMin:   durationCount > 0 ? Math.round((totalDurationMs / durationCount / 60000) * 10) / 10 : 0,
       firstTurnResolutionRate: n > 0             ? Math.round((singlePromptSessions / n) * 1000) / 10 : 0,
+      avgActiveRatio:          activeRatioCount > 0 ? Math.round((totalActiveRatio / activeRatioCount) * 10) / 10 : 0,
     };
 
     // Recent tool calls (up to 60, newest first)

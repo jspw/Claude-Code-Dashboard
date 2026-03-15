@@ -150,6 +150,17 @@ export class SessionParser {
         } catch { /* skip malformed lines */ }
       }
 
+      // Compute idle time: sum of assistant→user gaps exceeding the threshold
+      const IDLE_THRESHOLD_MS = 5 * 60 * 1000;
+      const sortedTurns = [...turns].sort((a, b) => a.timestamp - b.timestamp);
+      let idleTimeMs = 0;
+      for (let i = 0; i < sortedTurns.length - 1; i++) {
+        if (sortedTurns[i].role === 'assistant' && sortedTurns[i + 1].role === 'user') {
+          const gap = sortedTurns[i + 1].timestamp - sortedTurns[i].timestamp;
+          if (gap > IDLE_THRESHOLD_MS) { idleTimeMs += gap; }
+        }
+      }
+
       // Heuristic fallback for when PID-based detection is unavailable.
       // end_turn is normal between turns (user may still be typing), so use 30 min.
       // Other stop reasons suggest the session actually ended, so use 5 min.
@@ -177,6 +188,16 @@ export class SessionParser {
         ? Math.round((cacheReadTokens / totalInputForCache) * 1000) / 10
         : 0;
 
+      const durationMs = endTime && startTime ? endTime - startTime : null;
+      const hasEnoughTurns = sortedTurns.length >= 2;
+      const computedIdleTimeMs = hasEnoughTurns ? idleTimeMs : null;
+      const computedActiveTimeMs = durationMs !== null && computedIdleTimeMs !== null
+        ? Math.max(0, durationMs - computedIdleTimeMs)
+        : null;
+      const activityRatio = durationMs !== null && durationMs > 0 && computedActiveTimeMs !== null
+        ? Math.round((computedActiveTimeMs / durationMs) * 1000) / 10
+        : null;
+
       return {
         id: sessionId,
         projectId,
@@ -185,7 +206,7 @@ export class SessionParser {
         isActiveSession,
         startTime,
         endTime,
-        durationMs: endTime && startTime ? endTime - startTime : null,
+        durationMs,
         inputTokens,
         cacheCreationTokens,
         cacheReadTokens,
@@ -202,6 +223,9 @@ export class SessionParser {
         thinkingTokens,
         cacheHitRate,
         subagentCostUsd: 0, // populated by DashboardStore after scanning subagents/
+        idleTimeMs: computedIdleTimeMs,
+        activeTimeMs: computedActiveTimeMs,
+        activityRatio,
       };
     } catch (e) {
       console.error('Failed to parse session file:', filePath, e);

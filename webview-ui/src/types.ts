@@ -35,6 +35,9 @@ export interface Session {
   thinkingTokens: number;
   cacheHitRate: number;
   subagentCostUsd: number;
+  idleTimeMs: number | null;
+  activeTimeMs: number | null;
+  activityRatio: number | null;
 }
 
 export interface Turn {
@@ -140,6 +143,7 @@ export interface EfficiencyStats {
   avgToolCallsPerSession: number;
   avgSessionDurationMin: number;
   firstTurnResolutionRate: number;
+  avgActiveRatio: number;
 }
 
 export interface WeeklyRecap {

@@ -21,7 +21,7 @@ export default function EfficiencyCards({ data }: Props) {
   if (!data) { return null; }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       <Card
         label="Avg tokens / prompt"
         value={data.avgTokensPerPrompt.toLocaleString()}
@@ -38,6 +38,11 @@ export default function EfficiencyCards({ data }: Props) {
       <Card
         label="First-turn resolution"
         value={`${data.firstTurnResolutionRate}%`}
+      />
+      <Card
+        label="Avg active rate"
+        value={data.avgActiveRatio}
+        unit="%"
       />
     </div>
   );

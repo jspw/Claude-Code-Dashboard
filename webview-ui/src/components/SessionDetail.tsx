@@ -22,17 +22,48 @@ function formatDuration(ms: number | null): string {
 }
 
 export default function SessionDetail({ session }: Props) {
+  const hasActivity = session.durationMs !== null && session.activityRatio !== null;
+  const activeRatio = session.activityRatio ?? 0;
+  const activePct = Math.min(100, Math.max(0, activeRatio));
+
   return (
     <div className="space-y-4">
       <div className="flex gap-3 text-xs opacity-60 flex-wrap">
         <span>{new Date(session.startTime).toLocaleString()}</span>
         <span>·</span>
-        <span>{formatDuration(session.durationMs)}</span>
-        <span>·</span>
-        <span>{formatTokens(session.totalTokens)} tokens</span>
+        <span>{formatDuration(session.durationMs)} total</span>
         <span>·</span>
         <span>${session.costUsd.toFixed(4)}</span>
       </div>
+
+      {hasActivity && (
+        <div className="space-y-1">
+          <div className="flex gap-3 text-xs opacity-60 flex-wrap">
+            <span>Active {formatDuration(session.activeTimeMs ?? null)}</span>
+            <span>·</span>
+            <span>Idle {formatDuration(session.idleTimeMs ?? null)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-2 rounded-full overflow-hidden bg-[var(--vscode-panel-border)]">
+              <div
+                className="h-full rounded-full bg-[var(--vscode-charts-green)]"
+                style={{ width: `${activePct}%` }}
+              />
+            </div>
+            <span
+              className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                activeRatio >= 70
+                  ? 'text-green-400'
+                  : activeRatio >= 40
+                  ? 'text-yellow-400'
+                  : 'opacity-50'
+              }`}
+            >
+              {Math.round(activeRatio)}% active
+            </span>
+          </div>
+        </div>
+      )}
 
       {session.filesModified.length > 0 && (
         <div>

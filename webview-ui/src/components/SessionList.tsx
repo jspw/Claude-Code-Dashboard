@@ -41,6 +41,20 @@ export default function SessionList({ sessions, selectedId, onSelect }: Props) {
           <div className="font-medium">{new Date(s.startTime).toLocaleDateString()}</div>
           <div className="text-xs opacity-60">
             {formatDuration(s.durationMs)} · {formatTokens(s.totalTokens)} tokens · {s.promptCount} prompts
+            {s.activityRatio !== null && s.activityRatio !== undefined && (
+              <>
+                {' · '}
+                <span className={
+                  s.activityRatio >= 70
+                    ? 'text-green-400'
+                    : s.activityRatio >= 40
+                    ? 'text-yellow-400'
+                    : ''
+                }>
+                  {Math.round(s.activityRatio)}% active
+                </span>
+              </>
+            )}
           </div>
         </button>
       ))}
