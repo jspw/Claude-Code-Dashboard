@@ -1,0 +1,38 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install webview-ui deps
+        run: npm ci
+        working-directory: webview-ui
+
+      - name: Build
+        run: npm run build
+
+      - name: Install publishing tools
+        run: npm install -g @vscode/vsce ovsx
+
+      - name: Package extension
+        run: vsce package
+
+      - name: Publish to VS Code Marketplace
+        run: vsce publish --pat "${{ secrets.VSCE_PAT }}"
+
+      - name: Publish to Open VSX
+        run: ovsx publish *.vsix --pat "${{ secrets.OVSX_PAT }}"
