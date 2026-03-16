@@ -125,6 +125,7 @@ export interface ToolCall {
   name: string;
   input: Record<string, unknown>;
   output?: string;
+  mcpServer?: string;   // set if tool name matches mcp__<server>__<tool>
 }
 
 export interface LiveEvent {
@@ -157,12 +158,14 @@ export interface McpServer {
   command?: string;
   url?: string;
   type?: string;
+  toolCallCount: number;   // total calls across all project sessions (0 if unused)
 }
 
 export interface ProjectConfig {
   claudeMd: string | null;
   mcpServers: Record<string, McpServer>;
   projectSettings: Record<string, unknown>;
+  commands: { name: string; content: string }[];
 }
 
 const CACHE_VERSION = 2;
@@ -469,14 +472,16 @@ export class DashboardStore extends EventEmitter {
 
     let tokensTodayTotal = 0;
     let tokensWeekTotal = 0;
+    let costTodayUsd = 0;
+    let costWeekUsd = 0;
     let activeSessionCount = 0;
 
     for (const project of projects) {
       const sessions = this.getSessions(project.id);
       for (const session of sessions) {
         if (session.isActiveSession) { activeSessionCount++; }
-        if (session.startTime > now - dayMs) { tokensTodayTotal += session.totalTokens; }
-        if (session.startTime > now - weekMs) { tokensWeekTotal += session.totalTokens; }
+        if (session.startTime > now - dayMs) { tokensTodayTotal += session.totalTokens; costTodayUsd += session.costUsd; }
+        if (session.startTime > now - weekMs) { tokensWeekTotal += session.totalTokens; costWeekUsd += session.costUsd; }
       }
     }
 
@@ -484,9 +489,9 @@ export class DashboardStore extends EventEmitter {
       totalProjects: projects.length,
       activeSessionCount,
       tokensTodayTotal,
-      costTodayUsd: this.sessionParser.estimateCost(tokensTodayTotal),
+      costTodayUsd,
       tokensWeekTotal,
-      costWeekUsd: this.sessionParser.estimateCost(tokensWeekTotal),
+      costWeekUsd,
     };
   }
 
@@ -502,14 +507,16 @@ export class DashboardStore extends EventEmitter {
       const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
 
       let tokens = 0;
+      let costUsd = 0;
       for (const [, sessions] of this.sessions) {
         for (const session of sessions) {
           if (session.startTime >= dayStart && session.startTime < dayEnd) {
             tokens += session.totalTokens;
+            costUsd += session.costUsd;
           }
         }
       }
-      result.push({ date: dateStr, tokens, costUsd: this.sessionParser.estimateCost(tokens) });
+      result.push({ date: dateStr, tokens, costUsd });
     }
 
     return result;
@@ -624,17 +631,22 @@ export class DashboardStore extends EventEmitter {
   getProjectConfig(projectId: string): ProjectConfig {
     const project = this.projects.get(projectId);
     if (!project) {
-      return { claudeMd: null, mcpServers: {}, projectSettings: {} };
+      return { claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] };
     }
 
     const claudeMd = this.settingsParser.readClaudeMd(project.path);
     const projectSettings = this.settingsParser.readProjectSettings(project.path);
     const globalSettings = this.settingsParser.readGlobalSettings(this.claudeDir);
+    const userClaudeJson = this.settingsParser.readUserClaudeJson(os.homedir());
+    const projectMcpJson = this.settingsParser.readProjectMcpJson(project.path);
 
-    // Merge MCP servers from global settings and project settings
+    // Merge MCP servers from all sources (lower priority first, higher overrides)
+    // Order: global settings < ~/.claude.json (user) < project .claude/settings.json < project .mcp.json
     const rawGlobalMcp = (globalSettings.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
-    const rawProjectMcp = (projectSettings.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
-    const rawMcp: Record<string, Record<string, unknown>> = { ...rawGlobalMcp, ...rawProjectMcp };
+    const rawUserMcp = (userClaudeJson.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
+    const rawProjectSettingsMcp = (projectSettings.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
+    const rawProjectMcpJson = (projectMcpJson.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
+    const rawMcp: Record<string, Record<string, unknown>> = { ...rawGlobalMcp, ...rawUserMcp, ...rawProjectSettingsMcp, ...rawProjectMcpJson };
 
     const mcpServers: Record<string, McpServer> = {};
     for (const [name, raw] of Object.entries(rawMcp)) {
@@ -643,13 +655,32 @@ export class DashboardStore extends EventEmitter {
         command: raw.command as string | undefined,
         url: raw.url as string | undefined,
         type: raw.type as string | undefined,
+        toolCallCount: 0,
       };
     }
+
+    // Aggregate MCP tool call counts from all sessions for this project
+    const allSessions = [
+      ...(this.sessions.get(projectId) ?? []),
+      ...(this.subagentSessions.get(projectId) ?? []),
+    ];
+    for (const session of allSessions) {
+      for (const turn of session.turns) {
+        for (const tc of turn.toolCalls) {
+          if (tc.mcpServer && mcpServers[tc.mcpServer]) {
+            mcpServers[tc.mcpServer].toolCallCount++;
+          }
+        }
+      }
+    }
+
+    const commands = this.settingsParser.readProjectCommands(project.path);
 
     return {
       claudeMd,
       mcpServers,
       projectSettings: projectSettings as Record<string, unknown>,
+      commands,
     };
   }
 
@@ -1009,6 +1040,7 @@ export class DashboardStore extends EventEmitter {
     promptPatterns: { category: string; count: number }[];
     efficiency: EfficiencyStats;
     recentToolCalls: { tool: string; input: Record<string, unknown>; sessionId: string; sessionDate: number; timestamp: number }[];
+    weeklyStats: { sessions: number; tokens: number; costUsd: number; dailyBreakdown: { date: string; tokens: number; costUsd: number; sessions: number }[] };
   } {
     const sessions = this.getSessions(projectId);
     const now = Date.now();
@@ -1098,7 +1130,33 @@ export class DashboardStore extends EventEmitter {
     allCalls.sort((a, b) => b.timestamp - a.timestamp);
     const recentToolCalls = allCalls.slice(0, 60);
 
-    return { usageOverTime, toolUsage, promptPatterns, efficiency, recentToolCalls };
+    // Weekly stats (last 7 days)
+    const weekAgo = now - 7 * dayMs;
+    const weeklySessions = sessions.filter(s => s.startTime >= weekAgo);
+    const weeklyDailyBreakdown: { date: string; tokens: number; costUsd: number; sessions: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const dayStart = now - (i + 1) * dayMs;
+      const dayEnd   = now - i * dayMs;
+      const d = new Date(dayStart);
+      const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+      let tokens = 0; let costUsd = 0; let sessionsCount = 0;
+      for (const s of sessions) {
+        if (s.startTime >= dayStart && s.startTime < dayEnd) {
+          tokens += s.totalTokens;
+          costUsd += s.costUsd;
+          sessionsCount++;
+        }
+      }
+      weeklyDailyBreakdown.push({ date: dateStr, tokens, costUsd, sessions: sessionsCount });
+    }
+    const weeklyStats = {
+      sessions: weeklySessions.length,
+      tokens: weeklySessions.reduce((sum, s) => sum + s.totalTokens, 0),
+      costUsd: weeklySessions.reduce((sum, s) => sum + s.costUsd, 0),
+      dailyBreakdown: weeklyDailyBreakdown,
+    };
+
+    return { usageOverTime, toolUsage, promptPatterns, efficiency, recentToolCalls, weeklyStats };
   }
 
   getProjectFiles(projectId: string): {

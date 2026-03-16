@@ -125,7 +125,10 @@ export class SessionParser {
               }
               if (block.type === 'tool_use') {
                 toolCallCount++;
-                toolCalls.push({ id: block.id, name: block.name, input: block.input ?? {} });
+                const mcpServer = typeof block.name === 'string' && block.name.startsWith('mcp__')
+                  ? (block.name.split('__')[1] ?? undefined)
+                  : undefined;
+                toolCalls.push({ id: block.id, name: block.name, input: block.input ?? {}, mcpServer });
 
                 if (block.name === 'Write') {
                   const fp = block.input?.file_path as string | undefined;

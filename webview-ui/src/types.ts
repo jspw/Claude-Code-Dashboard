@@ -55,6 +55,7 @@ export interface ToolCall {
   name: string;
   input: Record<string, unknown>;
   output?: string;
+  mcpServer?: string;   // set if tool name matches mcp__<server>__<tool>
 }
 
 export interface DashboardStats {
@@ -103,12 +104,14 @@ export interface McpServer {
   command?: string;
   url?: string;
   type?: string;
+  toolCallCount: number;   // total calls across all project sessions (0 if unused)
 }
 
 export interface ProjectConfig {
   claudeMd: string | null;
   mcpServers: Record<string, McpServer>;
   projectSettings: Record<string, unknown>;
+  commands: { name: string; content: string }[];
 }
 
 export interface ToolUsageStat {
@@ -196,10 +199,18 @@ export interface ProjectToolCall {
   timestamp: number;
 }
 
+export interface WeeklyProjectStats {
+  sessions: number;
+  tokens: number;
+  costUsd: number;
+  dailyBreakdown: { date: string; tokens: number; costUsd: number; sessions: number }[];
+}
+
 export interface ProjectStats {
   usageOverTime: DailyUsage[];
   toolUsage: ToolUsageStat[];
   promptPatterns: PatternCount[];
   efficiency: EfficiencyStats;
   recentToolCalls: ProjectToolCall[];
+  weeklyStats: WeeklyProjectStats;
 }

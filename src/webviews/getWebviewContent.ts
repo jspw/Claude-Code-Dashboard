@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 export function getWebviewContent(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  view: 'dashboard' | 'project',
+  view: 'dashboard' | 'project' | 'sidebar',
   initialData: unknown
 ): string {
   const scriptUri = webview.asWebviewUri(

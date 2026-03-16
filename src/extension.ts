@@ -24,21 +24,16 @@ export async function activate(context: vscode.ExtensionContext) {
   const statusBar = new StatusBarProvider(store);
   const alertManager = new AlertManager(store, context);
 
-  // Register sidebar tree view
-  const treeView = vscode.window.createTreeView('claudeDashboard.sidebar', {
-    treeDataProvider: sidebarProvider,
-    showCollapseAll: false,
-  });
-
-  // Auto-open the full dashboard when the sidebar becomes visible
-  treeView.onDidChangeVisibility(e => {
-    if (e.visible) {
-      DashboardPanel.createOrShow(context, store);
-    }
-  }, null, context.subscriptions);
+  // Register sidebar webview view
+  const sidebarDisposable = vscode.window.registerWebviewViewProvider(
+    'claudeDashboard.sidebar',
+    sidebarProvider,
+    { webviewOptions: { retainContextWhenHidden: true } }
+  );
 
   // Register commands
   context.subscriptions.push(
+    sidebarDisposable,
     vscode.commands.registerCommand('claudeDashboard.openDashboard', () => {
       DashboardPanel.createOrShow(context, store);
     }),
@@ -76,7 +71,6 @@ export async function activate(context: vscode.ExtensionContext) {
       await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
       vscode.window.showInformationMessage(`Sessions exported to ${uri.fsPath}`);
     }),
-    treeView,
     statusBar,
   );
 
@@ -86,6 +80,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Initial data load
   await store.initialize();
+
+  // Open dashboard automatically on activation
+  DashboardPanel.createOrShow(context, store);
 
   // Check weekly digest on activation
   alertManager.checkWeeklyDigest();

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Project, Session, Turn, ProjectConfig, McpServer, ProjectStats, ProjectFile, ProjectToolCall } from '../types';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { vscode } from '../vscode';
 import ToolUsageBar from '../components/ToolUsageBar';
 
@@ -12,7 +13,7 @@ interface Props {
   projectFiles?: ProjectFile[];
 }
 
-type Tab = 'sessions' | 'claudemd' | 'tools' | 'mcp' | 'subagents' | 'files';
+type Tab = 'sessions' | 'claudemd' | 'tools' | 'mcp' | 'subagents' | 'files' | 'commands' | 'weekly';
 
 // Tool name → colour accent
 const TOOL_COLORS: Record<string, string> = {
@@ -27,7 +28,10 @@ const TOOL_COLORS: Record<string, string> = {
   WebFetch:   '#14b8a6',
   WebSearch:  '#3b82f6',
 };
-function toolColor(name: string): string { return TOOL_COLORS[name] ?? '#6b7280'; }
+function toolColor(name: string): string {
+  if (name.startsWith('mcp__')) { return '#06b6d4'; }   // cyan for all MCP tools
+  return TOOL_COLORS[name] ?? '#6b7280';
+}
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -57,7 +61,9 @@ function timeAgo(ts: number): string {
 
 const TAB_LABELS: { key: Tab; label: string }[] = [
   { key: 'sessions',  label: 'Sessions' },
+  { key: 'weekly',    label: 'Weekly' },
   { key: 'claudemd',  label: 'CLAUDE.md' },
+  { key: 'commands',  label: 'Commands' },
   { key: 'tools',     label: 'Tools' },
   { key: 'mcp',       label: 'MCP Servers' },
   { key: 'subagents', label: 'Subagents' },
@@ -174,7 +180,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                     {s.isActiveSession && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />}
                     <span className="font-medium truncate">{new Date(s.startTime).toLocaleDateString()}</span>
                     {s.hasThinking && <span title="Used extended thinking" className="text-yellow-400 text-xs shrink-0">⚡</span>}
-                    <span className="text-xs opacity-40 ml-auto shrink-0">{new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-xs opacity-40 ml-auto shrink-0">{new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                   </div>
                   <div className="text-xs opacity-60 mt-0.5 truncate">
                     {formatDuration(s.durationMs)} · {formatTokens(s.totalTokens)} · {s.promptCount}p
@@ -190,7 +196,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
 
           <section className="min-w-0 overflow-hidden">
             {selectedSession ? (
-              <SessionDetail session={selectedSession} turns={turns} loading={turnsLoading} />
+              <SessionDetail key={selectedSession.id} session={selectedSession} turns={turns} loading={turnsLoading} />
             ) : (
               <div className="opacity-40 text-sm mt-8 text-center">Select a session to view details</div>
             )}
@@ -311,15 +317,34 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
 
       {/* ── CLAUDE.md tab ── */}
       {activeTab === 'claudemd' && (
-        <div>
+        <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]">
           {config?.claudeMd ? (
-            <pre className="text-xs leading-relaxed whitespace-pre-wrap bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)] rounded-lg p-4 max-h-[70vh] overflow-y-auto font-mono opacity-90">
-              {config.claudeMd}
-            </pre>
+            <MarkdownView content={config.claudeMd} />
           ) : (
             <div className="text-sm opacity-40 text-center py-12">No CLAUDE.md found in this project.</div>
           )}
         </div>
+      )}
+
+      {/* ── Commands tab ── */}
+      {activeTab === 'commands' && (
+        <div className="space-y-4">
+          {(!config?.commands || config.commands.length === 0) ? (
+            <div className="text-sm opacity-40 text-center py-12">No custom commands found in .claude/commands/.</div>
+          ) : (
+            <>
+              <p className="text-xs opacity-50">{config.commands.length} command{config.commands.length !== 1 ? 's' : ''} in .claude/commands/</p>
+              {config.commands.map(cmd => (
+                <CommandBlock key={cmd.name} command={cmd} />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Weekly tab ── */}
+      {activeTab === 'weekly' && (
+        <WeeklyStatsTab projectStats={projectStats} />
       )}
 
       {/* ── MCP Servers tab ── */}
@@ -375,6 +400,11 @@ function McpServerRow({ server }: { server: McpServer }) {
             {server.type}
           </span>
         )}
+        {server.toolCallCount > 0 && (
+          <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded font-mono">
+            {server.toolCallCount} call{server.toolCallCount !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
       {server.command && (
         <div className="text-xs opacity-60 font-mono mt-1">
@@ -395,7 +425,7 @@ function SessionDetail({ session, turns, loading }: { session: Session; turns: T
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
-        <span>{new Date(session.startTime).toLocaleString()}</span>
+        <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
         <span>·</span>
         <span>{formatDuration(session.durationMs)}</span>
         <span>·</span>
@@ -434,7 +464,7 @@ function SessionDetail({ session, turns, loading }: { session: Session; turns: T
               <span
                 key={f}
                 title={f}
-                className="text-xs bg-[var(--vscode-badge-background)] px-2 py-0.5 rounded font-mono truncate max-w-[200px]"
+                className="text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
               >
                 {session.filesCreated?.includes(f) ? '🆕 ' : '✏️ '}
                 {f.split('/').pop()}
@@ -449,7 +479,7 @@ function SessionDetail({ session, turns, loading }: { session: Session; turns: T
       ) : turns.length === 0 ? (
         <div className="text-xs opacity-40 text-center py-8">No turns recorded for this session.</div>
       ) : (
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+        <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
           {turns.map(turn => (
             <TurnBlock key={turn.id} turn={turn} />
           ))}
@@ -487,7 +517,9 @@ function TurnBlock({ turn }: { turn: Turn }) {
         <div className="mt-2 space-y-1">
           {turn.toolCalls.map(tc => (
             <div key={tc.id} className="text-xs bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1">
-              <span className="font-mono font-semibold text-yellow-400">{tc.name}</span>
+              <span className="font-mono font-semibold" style={{ color: toolColor(tc.name) }}>
+                {tc.name.startsWith('mcp__') ? tc.name.slice(5).replace('__', '/') : tc.name}
+              </span>
               {!!tc.input?.file_path && <span className="ml-2 opacity-60">{String(tc.input.file_path)}</span>}
               {!!tc.input?.command && <span className="ml-2 opacity-60 font-mono">{String(tc.input.command).slice(0, 80)}</span>}
             </div>
@@ -552,7 +584,7 @@ function SubagentRow({ session, parentSessions }: { session: Session; parentSess
     <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-3 space-y-1">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded font-mono shrink-0">subagent</span>
-        <span className="text-xs font-medium">{new Date(session.startTime).toLocaleString()}</span>
+        <span className="text-xs font-medium">{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
         {session.hasThinking && <span title="Used extended thinking" className="text-yellow-400 text-xs">⚡</span>}
         <span className="text-xs opacity-40 ml-auto">{formatDuration(session.durationMs)}</span>
       </div>
@@ -586,6 +618,193 @@ function StatCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-[var(--vscode-panel-border)] p-4">
       <div className="text-xs opacity-50 mb-1">{label}</div>
       <div className="text-xl font-bold">{value}</div>
+    </div>
+  );
+}
+
+// ── Markdown renderer ──────────────────────────────────────────────────────────
+
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/);
+  return parts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return <code key={i} className="font-mono text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] px-1 rounded">{part.slice(1, -1)}</code>;
+    }
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    return part as unknown as React.ReactNode;
+  });
+}
+
+function MarkdownView({ content }: { content: string }) {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    if (line.startsWith('```')) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) { codeLines.push(lines[i]); i++; }
+      elements.push(
+        <pre key={key++} className="text-xs font-mono bg-[var(--vscode-input-background)] border border-[var(--vscode-panel-border)] rounded p-3 overflow-x-auto my-2 leading-relaxed">
+          <code>{codeLines.join('\n')}</code>
+        </pre>
+      );
+      i++; continue;
+    }
+
+    // Headings
+    const h3 = line.match(/^### (.+)/);
+    const h2 = line.match(/^## (.+)/);
+    const h1 = line.match(/^# (.+)/);
+    if (h1) { elements.push(<h1 key={key++} className="text-xl font-bold mt-5 mb-2 border-b border-[var(--vscode-panel-border)] pb-1">{renderInline(h1[1])}</h1>); i++; continue; }
+    if (h2) { elements.push(<h2 key={key++} className="text-base font-bold mt-4 mb-1.5">{renderInline(h2[1])}</h2>); i++; continue; }
+    if (h3) { elements.push(<h3 key={key++} className="text-sm font-semibold mt-3 mb-1 opacity-80">{renderInline(h3[1])}</h3>); i++; continue; }
+
+    // Bullet list
+    if (line.match(/^[\-\*] /)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && lines[i].match(/^[\-\*] /)) {
+        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].slice(2))}</li>);
+        i++;
+      }
+      elements.push(<ul key={key++} className="list-disc pl-5 my-2 space-y-0.5 text-sm">{items}</ul>);
+      continue;
+    }
+
+    // Numbered list
+    if (line.match(/^\d+\. /)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].replace(/^\d+\. /, ''))}</li>);
+        i++;
+      }
+      elements.push(<ol key={key++} className="list-decimal pl-5 my-2 space-y-0.5 text-sm">{items}</ol>);
+      continue;
+    }
+
+    // Horizontal rule
+    if (line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
+      elements.push(<hr key={key++} className="my-3 border-[var(--vscode-panel-border)]" />);
+      i++; continue;
+    }
+
+    // Empty line
+    if (!line.trim()) { i++; continue; }
+
+    // Paragraph — collect contiguous non-special lines
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !lines[i].startsWith('#') &&
+      !lines[i].startsWith('```') &&
+      !lines[i].match(/^[\-\*] /) &&
+      !lines[i].match(/^\d+\. /) &&
+      !lines[i].match(/^---+$/)
+    ) { paraLines.push(lines[i]); i++; }
+    if (paraLines.length) {
+      elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '))}</p>);
+    }
+  }
+
+  return <div className="p-4 max-h-[70vh] overflow-y-auto">{elements}</div>;
+}
+
+// ── Command block ──────────────────────────────────────────────────────────────
+
+function CommandBlock({ command }: { command: { name: string; content: string } }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors text-left"
+      >
+        <span className="text-xs font-mono font-semibold text-[var(--vscode-textLink-foreground)]">/{command.name}</span>
+        <span className="text-xs opacity-40 ml-auto">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-[var(--vscode-panel-border)]">
+          <MarkdownView content={command.content} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Weekly stats tab ───────────────────────────────────────────────────────────
+
+function WeeklyStatsTab({ projectStats }: { projectStats?: ProjectStats }) {
+  if (!projectStats?.weeklyStats) {
+    return <div className="text-sm opacity-40 text-center py-12">No data available.</div>;
+  }
+  const { sessions, tokens, costUsd, dailyBreakdown } = projectStats.weeklyStats;
+  const hasActivity = tokens > 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Sessions this week" value={String(sessions)} />
+        <StatCard label="Tokens this week" value={formatTokens(tokens)} />
+        <StatCard label="Cost this week" value={`$${costUsd.toFixed(3)}`} />
+      </div>
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Daily Breakdown</h2>
+        {!hasActivity ? (
+          <div className="text-sm opacity-40 text-center py-8">No activity in the last 7 days.</div>
+        ) : (
+          <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={dailyBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--vscode-foreground)', opacity: 0.5 }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-panel-border)', borderRadius: 4, fontSize: 12 }}
+                  formatter={(v: number, name: string) => [name === 'tokens' ? formatTokens(v) : `$${v.toFixed(4)}`, name]}
+                />
+                <Bar dataKey="tokens" fill="var(--vscode-button-background)" radius={[2, 2, 0, 0]} opacity={0.8} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Day-by-Day</h2>
+        <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] divide-y divide-[var(--vscode-panel-border)]">
+          {[...dailyBreakdown].reverse().map(day => (
+            <div key={day.date} className="flex items-center gap-4 px-4 py-2.5 text-sm">
+              <span className="font-medium w-12 shrink-0">{day.date}</span>
+              <span className="opacity-60 w-20 shrink-0">{day.sessions} session{day.sessions !== 1 ? 's' : ''}</span>
+              <span className="opacity-60 w-20 shrink-0">{formatTokens(day.tokens)} tok</span>
+              <span className="opacity-60">${day.costUsd.toFixed(4)}</span>
+              {day.tokens > 0 && (
+                <div className="flex-1 h-1.5 bg-[var(--vscode-input-background)] rounded overflow-hidden ml-2">
+                  <div
+                    className="h-full rounded"
+                    style={{
+                      width: `${Math.max(...dailyBreakdown.map(d => d.tokens)) > 0 ? (day.tokens / Math.max(...dailyBreakdown.map(d => d.tokens))) * 100 : 0}%`,
+                      background: 'var(--vscode-button-background)',
+                      opacity: 0.6,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

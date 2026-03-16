@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Dashboard from './views/Dashboard';
 import ProjectDetail from './views/ProjectDetail';
+import Sidebar from './views/Sidebar';
 import {
   Project, Session, ProjectConfig,
   DashboardStats, DailyUsage, ProjectUsage, HeatmapCell,
@@ -12,7 +13,7 @@ import {
 
 declare global {
   interface Window {
-    __INITIAL_VIEW__: 'dashboard' | 'project';
+    __INITIAL_VIEW__: 'dashboard' | 'project' | 'sidebar';
     __INITIAL_DATA__: unknown;
   }
 }
@@ -31,6 +32,11 @@ export default function App() {
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
+
+  if (view === 'sidebar') {
+    const { projects, stats } = data as { projects: Project[]; stats: DashboardStats };
+    return <Sidebar projects={projects ?? []} stats={stats} />;
+  }
 
   if (view === 'project') {
     const { project, sessions, subagentSessions, config, projectStats, projectFiles } = data as {

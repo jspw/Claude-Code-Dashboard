@@ -188,7 +188,7 @@ export default function Dashboard({
           {/* Active sessions */}
           {active.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Active Now</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--vscode-textLink-foreground)] border-l-2 border-[var(--vscode-textLink-foreground)] pl-2 mb-3">Active Now</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 {active.map(p => (
                   <ActiveProjectCard key={p.id} project={p} />
@@ -200,7 +200,7 @@ export default function Dashboard({
           {/* All projects with filter/sort */}
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60">Projects</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--vscode-textLink-foreground)] border-l-2 border-[var(--vscode-textLink-foreground)] pl-2">Projects</h2>
               <div className="ml-auto flex items-center gap-2">
                 <input
                   type="text"
@@ -431,7 +431,6 @@ function ProjectRow({ project }: { project: Project }) {
       onClick={() => vscode.postMessage({ type: 'openProject', projectId: project.id })}
       className="flex items-center gap-3 w-full text-left rounded p-3 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors"
     >
-      <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
       <span className="font-medium min-w-0 flex-1 truncate">{project.name}</span>
       <span className="text-xs opacity-50 shrink-0">{timeAgo(project.lastActive)}</span>
       <span className="text-xs opacity-50 shrink-0">{formatTokens(project.totalTokens)}</span>

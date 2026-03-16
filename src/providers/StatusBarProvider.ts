@@ -18,7 +18,7 @@ export class StatusBarProvider implements vscode.Disposable {
     const cost = `$${stats.costTodayUsd.toFixed(2)}`;
     if (stats.activeSessionCount > 0) {
       this.item.text = `$(pulse) Claude: ${stats.activeSessionCount} active · ${tokens} · ${cost}`;
-      this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.item.backgroundColor = undefined;
     } else {
       this.item.text = `$(pulse) Claude: ${tokens} · ${cost}`;
       this.item.backgroundColor = undefined;
