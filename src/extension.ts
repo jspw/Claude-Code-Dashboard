@@ -81,6 +81,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initial data load
   await store.initialize();
 
+  // Open dashboard automatically on activation
+  DashboardPanel.createOrShow(context, store);
+
   // Check weekly digest on activation
   alertManager.checkWeeklyDigest();
 
