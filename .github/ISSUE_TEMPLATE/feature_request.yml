@@ -1,0 +1,57 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea that would make the Claude Code Dashboard better? Describe it below.
+        Before submitting, please search existing issues to avoid duplicates.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the problem or gap this feature would address. What are you trying to do that you can't do today?
+      placeholder: I'm trying to... but currently I have to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would the ideal solution look like? Be as specific as you can.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you've thought about or workarounds you're currently using?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area of the extension does this affect?
+      options:
+        - Dashboard overview
+        - Charts tab
+        - Search tab
+        - Insights tab
+        - Project detail / session view
+        - Sidebar
+        - Real-time tracking / hooks
+        - Export
+        - Configuration / settings
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, screenshots, links to similar features in other tools — anything that helps illustrate the idea.

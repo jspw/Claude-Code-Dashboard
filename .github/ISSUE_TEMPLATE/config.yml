@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question / general discussion
+    url: https://github.com/jspw/Claude-Code-Dashboard/discussions
+    about: Use GitHub Discussions for questions, ideas, and general conversation.
