@@ -110,6 +110,12 @@ See [SECURITY.md](SECURITY.md) for how to report vulnerabilities privately.
 
 ---
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+
+---
+
 ## License
 
 [AGPL-3.0](LICENSE) — free to use and modify, but any modified version must also be released under the same license. Commercial reselling is not permitted.

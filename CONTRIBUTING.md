@@ -105,7 +105,7 @@ Changes to `webview-ui/src/` affect the UI — rebuild with `npm run build:ui`.
 
 ## Making changes
 
-1. **Fork** the repository and create a branch from `main`:
+1. **Fork** the repository and create a branch from `dev`:
    ```bash
    git checkout -b fix/my-bug-fix
    # or
@@ -118,7 +118,7 @@ Changes to `webview-ui/src/` affect the UI — rebuild with `npm run build:ui`.
 
 4. **Check for regressions** — open the dashboard, navigate around, verify nothing is broken.
 
-5. **Submit a pull request** against `main` using the PR template.
+5. **Submit a pull request** against `dev` using the PR template.
 
 ### Branch naming
 
@@ -136,11 +136,12 @@ Changes to `webview-ui/src/` affect the UI — rebuild with `npm run build:ui`.
 
 All PRs must:
 
-- [ ] Target the `main` branch
+- [ ] Target the `dev` branch (feature/fix PRs go to `dev`; `dev` → `main` is batched by maintainers)
 - [ ] Pass CI (build must succeed — no TypeScript errors)
 - [ ] Include a clear description of what changed and why. Include screenshots for UI changes.
 - [ ] Reference the related issue if one exists (`Closes #123`)
 - [ ] Not introduce new external dependencies without prior discussion
+- [ ] Use a conventional commit message (`feat:`, `fix:`, `chore:`, etc.) — this drives the automated changelog
 
 UI PRs additionally must:
 
@@ -196,6 +197,31 @@ chore: bump vsce to 2.24
 ```
 
 Keep the subject line under 72 characters. Use the body for the "why" when needed.
+
+---
+
+## Releasing a new version
+
+> This is for maintainers only.
+
+Releases are fully automated via [`release-please`](https://github.com/googleapis/release-please). **Do not manually bump versions, edit `CHANGELOG.md`, or create tags.**
+
+### How it works
+
+1. Every push to `main` triggers the Release Please workflow.
+2. The bot reads conventional commit messages and keeps a **Release PR** open, accumulating all pending changes. It auto-bumps `package.json` version and updates `CHANGELOG.md` following semver rules:
+   - `fix:` commits → patch bump
+   - `feat:` commits → minor bump
+   - `feat!:` or `BREAKING CHANGE:` footer → major bump
+3. When you're ready to ship, **merge the Release PR**. The bot creates a GitHub Release and tag automatically.
+4. Creating the GitHub Release fires the publish workflow, which publishes to both VS Code Marketplace and Open VSX.
+
+### Summary
+
+- No manual version bumps
+- No manual tagging
+- No manual `CHANGELOG.md` edits
+- Just merge the Release PR when ready to publish
 
 ---
 
