@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Project, Session, Turn, ProjectConfig, McpServer, ProjectStats, ProjectFile, ProjectToolCall } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { vscode } from '../vscode';
+import { formatTokens, formatDuration, timeAgo } from '../utils/format';
+import { toolColor } from '../utils/toolColor';
+import { MarkdownView, CommandBlock } from '../components/MarkdownView';
+import SessionDetail from '../components/SessionDetail';
+import WeeklyStatsTab from '../components/WeeklyStatsTab';
 import ToolUsageBar from '../components/ToolUsageBar';
 
 interface Props {
@@ -14,50 +18,6 @@ interface Props {
 }
 
 type Tab = 'sessions' | 'claudemd' | 'tools' | 'mcp' | 'subagents' | 'files' | 'commands' | 'weekly';
-
-// Tool name → colour accent
-const TOOL_COLORS: Record<string, string> = {
-  Read:       '#6366f1',
-  Write:      '#22c55e',
-  Edit:       '#f59e0b',
-  MultiEdit:  '#f97316',
-  Bash:       '#ef4444',
-  Glob:       '#8b5cf6',
-  Grep:       '#ec4899',
-  Agent:      '#06b6d4',
-  WebFetch:   '#14b8a6',
-  WebSearch:  '#3b82f6',
-};
-function toolColor(name: string): string {
-  if (name.startsWith('mcp__')) { return '#06b6d4'; }   // cyan for all MCP tools
-  return TOOL_COLORS[name] ?? '#6b7280';
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function formatDuration(ms: number | null): string {
-  if (!ms) return '—';
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${m % 60}m`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
-}
-
-function timeAgo(ts: number): string {
-  if (!ts) return 'never';
-  const diff = Date.now() - ts;
-  const h = Math.floor(diff / 3_600_000);
-  const d = Math.floor(diff / 86_400_000);
-  if (h < 1) return 'just now';
-  if (h < 24) return `${h}h ago`;
-  return `${d}d ago`;
-}
 
 const TAB_LABELS: { key: Tab; label: string }[] = [
   { key: 'sessions',  label: 'Sessions' },
@@ -258,7 +218,6 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
       {/* ── Tools tab ── */}
       {activeTab === 'tools' && (
         <div className="space-y-6">
-          {/* Summary stats */}
           {projectStats && (() => {
             const total = projectStats.toolUsage.reduce((s, t) => s + t.count, 0);
             const unique = projectStats.toolUsage.length;
@@ -272,7 +231,6 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
             );
           })()}
 
-          {/* Full breakdown */}
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Breakdown</h2>
             <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 space-y-2">
@@ -301,7 +259,6 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
             </div>
           </section>
 
-          {/* Recent tool calls feed */}
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Recent Calls</h2>
             <div className="space-y-1">
@@ -365,7 +322,16 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Tab-specific row components ────────────────────────────────────────────────
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--vscode-panel-border)] p-4">
+      <div className="text-xs opacity-50 mb-1">{label}</div>
+      <div className="text-xl font-bold">{value}</div>
+    </div>
+  );
+}
 
 function FileRow({ file }: { file: ProjectFile }) {
   const typeColor = file.type === 'created' ? 'text-green-400' : file.type === 'both' ? 'text-blue-400' : 'text-yellow-400';
@@ -420,122 +386,8 @@ function McpServerRow({ server }: { server: McpServer }) {
   );
 }
 
-function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
-  const totalCost = session.costUsd + (session.subagentCostUsd ?? 0);
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
-        <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
-        <span>·</span>
-        <span>{formatDuration(session.durationMs)}</span>
-        <span>·</span>
-        <span title={`input: ${session.inputTokens?.toLocaleString()} · cache write: ${session.cacheCreationTokens?.toLocaleString()} · cache read: ${session.cacheReadTokens?.toLocaleString()} · output: ${session.outputTokens?.toLocaleString()}`}>
-          {formatTokens(session.totalTokens)} tokens
-        </span>
-        <span>·</span>
-        <span>${totalCost.toFixed(4)}</span>
-        {(session.cacheReadTokens ?? 0) > 0 && (
-          <span className="opacity-50" title="Cache reads are billed at 0.1x and excluded from token count">
-            +{formatTokens(session.cacheReadTokens)} cached
-          </span>
-        )}
-        {(session.cacheHitRate ?? 0) > 0 && (
-          <span className="text-green-400 opacity-80" title="Cache hit rate: fraction of input served from cache">
-            {session.cacheHitRate.toFixed(0)}% cache
-          </span>
-        )}
-        {session.hasThinking && (
-          <span className="text-yellow-400" title={`Extended thinking: ${formatTokens(session.thinkingTokens ?? 0)} thinking tokens`}>
-            ⚡ thinking{(session.thinkingTokens ?? 0) > 0 ? ` (${formatTokens(session.thinkingTokens)})` : ''}
-          </span>
-        )}
-        {(session.subagentCostUsd ?? 0) > 0 && (
-          <span className="text-blue-400" title="Subagent sessions cost">
-            +${session.subagentCostUsd.toFixed(4)} subagents
-          </span>
-        )}
-      </div>
-
-      {session.filesModified.length > 0 && (
-        <div>
-          <div className="text-xs opacity-50 mb-1">Files touched</div>
-          <div className="flex flex-wrap gap-1">
-            {session.filesModified.map(f => (
-              <span
-                key={f}
-                title={f}
-                className="text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
-              >
-                {session.filesCreated?.includes(f) ? '🆕 ' : '✏️ '}
-                {f.split('/').pop()}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-xs opacity-40 text-center py-8">Loading turns...</div>
-      ) : turns.length === 0 ? (
-        <div className="text-xs opacity-40 text-center py-8">No turns recorded for this session.</div>
-      ) : (
-        <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-          {turns.map(turn => (
-            <TurnBlock key={turn.id} turn={turn} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TurnBlock({ turn }: { turn: Turn }) {
-  const [expanded, setExpanded] = useState(false);
-  const LIMIT = 400;
-  const content = turn.content ?? '';
-  const isLong = content.length > LIMIT;
-
-  return (
-    <div className={`rounded-lg p-3 text-sm ${turn.role === 'user' ? 'bg-[var(--vscode-input-background)]' : 'bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)]'}`}>
-      <div className="text-xs opacity-40 mb-1 font-semibold uppercase">{turn.role}</div>
-      {content && (
-        <div>
-          <p className="whitespace-pre-wrap text-xs leading-relaxed opacity-90">
-            {expanded || !isLong ? content : content.slice(0, LIMIT) + '…'}
-          </p>
-          {isLong && (
-            <button
-              onClick={() => setExpanded(e => !e)}
-              className="text-xs opacity-50 hover:opacity-80 mt-1 underline"
-            >
-              {expanded ? 'Show less' : `Show more (${content.length - LIMIT} more chars)`}
-            </button>
-          )}
-        </div>
-      )}
-      {turn.toolCalls.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {turn.toolCalls.map(tc => (
-            <div key={tc.id} className="text-xs bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1">
-              <span className="font-mono font-semibold" style={{ color: toolColor(tc.name) }}>
-                {tc.name.startsWith('mcp__') ? tc.name.slice(5).replace('__', '/') : tc.name}
-              </span>
-              {!!tc.input?.file_path && <span className="ml-2 opacity-60">{String(tc.input.file_path)}</span>}
-              {!!tc.input?.command && <span className="ml-2 opacity-60 font-mono">{String(tc.input.command).slice(0, 80)}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-      {turn.outputTokens > 0 && (
-        <div className="mt-1 text-xs opacity-30">{turn.inputTokens}↑ {turn.outputTokens}↓ tokens</div>
-      )}
-    </div>
-  );
-}
-
 function ToolCallRow({ tc }: { tc: ProjectToolCall }) {
   const [open, setOpen] = useState(false);
-  // Pull out the most useful single-line hint from the input
   const hint = (tc.input?.file_path as string | undefined)
     ?? (tc.input?.command as string | undefined)
     ?? (tc.input?.pattern as string | undefined)
@@ -609,202 +461,6 @@ function SubagentRow({ session, parentSessions }: { session: Session; parentSess
       {!parent && session.parentSessionId && (
         <div className="text-xs opacity-40 mt-1 font-mono">Parent ID: {session.parentSessionId.slice(0, 8)}…</div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-[var(--vscode-panel-border)] p-4">
-      <div className="text-xs opacity-50 mb-1">{label}</div>
-      <div className="text-xl font-bold">{value}</div>
-    </div>
-  );
-}
-
-// ── Markdown renderer ──────────────────────────────────────────────────────────
-
-function renderInline(text: string): React.ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/);
-  return parts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-      return <code key={i} className="font-mono text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] px-1 rounded">{part.slice(1, -1)}</code>;
-    }
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-      return <em key={i}>{part.slice(1, -1)}</em>;
-    }
-    return part as unknown as React.ReactNode;
-  });
-}
-
-function MarkdownView({ content }: { content: string }) {
-  const lines = content.split('\n');
-  const elements: React.ReactNode[] = [];
-  let i = 0;
-  let key = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Fenced code block
-    if (line.startsWith('```')) {
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith('```')) { codeLines.push(lines[i]); i++; }
-      elements.push(
-        <pre key={key++} className="text-xs font-mono bg-[var(--vscode-input-background)] border border-[var(--vscode-panel-border)] rounded p-3 overflow-x-auto my-2 leading-relaxed">
-          <code>{codeLines.join('\n')}</code>
-        </pre>
-      );
-      i++; continue;
-    }
-
-    // Headings
-    const h3 = line.match(/^### (.+)/);
-    const h2 = line.match(/^## (.+)/);
-    const h1 = line.match(/^# (.+)/);
-    if (h1) { elements.push(<h1 key={key++} className="text-xl font-bold mt-5 mb-2 border-b border-[var(--vscode-panel-border)] pb-1">{renderInline(h1[1])}</h1>); i++; continue; }
-    if (h2) { elements.push(<h2 key={key++} className="text-base font-bold mt-4 mb-1.5">{renderInline(h2[1])}</h2>); i++; continue; }
-    if (h3) { elements.push(<h3 key={key++} className="text-sm font-semibold mt-3 mb-1 opacity-80">{renderInline(h3[1])}</h3>); i++; continue; }
-
-    // Bullet list
-    if (line.match(/^[\-\*] /)) {
-      const items: React.ReactNode[] = [];
-      while (i < lines.length && lines[i].match(/^[\-\*] /)) {
-        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].slice(2))}</li>);
-        i++;
-      }
-      elements.push(<ul key={key++} className="list-disc pl-5 my-2 space-y-0.5 text-sm">{items}</ul>);
-      continue;
-    }
-
-    // Numbered list
-    if (line.match(/^\d+\. /)) {
-      const items: React.ReactNode[] = [];
-      while (i < lines.length && lines[i].match(/^\d+\. /)) {
-        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].replace(/^\d+\. /, ''))}</li>);
-        i++;
-      }
-      elements.push(<ol key={key++} className="list-decimal pl-5 my-2 space-y-0.5 text-sm">{items}</ol>);
-      continue;
-    }
-
-    // Horizontal rule
-    if (line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
-      elements.push(<hr key={key++} className="my-3 border-[var(--vscode-panel-border)]" />);
-      i++; continue;
-    }
-
-    // Empty line
-    if (!line.trim()) { i++; continue; }
-
-    // Paragraph — collect contiguous non-special lines
-    const paraLines: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() &&
-      !lines[i].startsWith('#') &&
-      !lines[i].startsWith('```') &&
-      !lines[i].match(/^[\-\*] /) &&
-      !lines[i].match(/^\d+\. /) &&
-      !lines[i].match(/^---+$/)
-    ) { paraLines.push(lines[i]); i++; }
-    if (paraLines.length) {
-      elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '))}</p>);
-    }
-  }
-
-  return <div className="p-4 max-h-[70vh] overflow-y-auto">{elements}</div>;
-}
-
-// ── Command block ──────────────────────────────────────────────────────────────
-
-function CommandBlock({ command }: { command: { name: string; content: string } }) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors text-left"
-      >
-        <span className="text-xs font-mono font-semibold text-[var(--vscode-textLink-foreground)]">/{command.name}</span>
-        <span className="text-xs opacity-40 ml-auto">{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div className="border-t border-[var(--vscode-panel-border)]">
-          <MarkdownView content={command.content} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Weekly stats tab ───────────────────────────────────────────────────────────
-
-function WeeklyStatsTab({ projectStats }: { projectStats?: ProjectStats }) {
-  if (!projectStats?.weeklyStats) {
-    return <div className="text-sm opacity-40 text-center py-12">No data available.</div>;
-  }
-  const { sessions, tokens, costUsd, dailyBreakdown } = projectStats.weeklyStats;
-  const hasActivity = tokens > 0;
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Sessions this week" value={String(sessions)} />
-        <StatCard label="Tokens this week" value={formatTokens(tokens)} />
-        <StatCard label="Cost this week" value={`$${costUsd.toFixed(3)}`} />
-      </div>
-
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Daily Breakdown</h2>
-        {!hasActivity ? (
-          <div className="text-sm opacity-40 text-center py-8">No activity in the last 7 days.</div>
-        ) : (
-          <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={dailyBreakdown} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--vscode-foreground)', opacity: 0.5 }} axisLine={false} tickLine={false} />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{ background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-panel-border)', borderRadius: 4, fontSize: 12 }}
-                  formatter={(v: number, name: string) => [name === 'tokens' ? formatTokens(v) : `$${v.toFixed(4)}`, name]}
-                />
-                <Bar dataKey="tokens" fill="var(--vscode-button-background)" radius={[2, 2, 0, 0]} opacity={0.8} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Day-by-Day</h2>
-        <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] divide-y divide-[var(--vscode-panel-border)]">
-          {[...dailyBreakdown].reverse().map(day => (
-            <div key={day.date} className="flex items-center gap-4 px-4 py-2.5 text-sm">
-              <span className="font-medium w-12 shrink-0">{day.date}</span>
-              <span className="opacity-60 w-20 shrink-0">{day.sessions} session{day.sessions !== 1 ? 's' : ''}</span>
-              <span className="opacity-60 w-20 shrink-0">{formatTokens(day.tokens)} tok</span>
-              <span className="opacity-60">${day.costUsd.toFixed(4)}</span>
-              {day.tokens > 0 && (
-                <div className="flex-1 h-1.5 bg-[var(--vscode-input-background)] rounded overflow-hidden ml-2">
-                  <div
-                    className="h-full rounded"
-                    style={{
-                      width: `${Math.max(...dailyBreakdown.map(d => d.tokens)) > 0 ? (day.tokens / Math.max(...dailyBreakdown.map(d => d.tokens))) * 100 : 0}%`,
-                      background: 'var(--vscode-button-background)',
-                      opacity: 0.6,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
