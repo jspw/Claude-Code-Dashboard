@@ -2,6 +2,19 @@ import * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockExtensionContext } from './__mocks__/vscode';
 
+type ExportSession = {
+  id: string;
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+  totalTokens: number;
+  costUsd: number;
+  promptCount: number;
+  toolCallCount: number;
+};
+
+type InfoMessageResult = Awaited<ReturnType<typeof vscode.window.showInformationMessage>>;
+
 vi.mock('os', () => ({ homedir: vi.fn(() => '/mock/home') }));
 
 const mockStore = {
@@ -9,7 +22,7 @@ const mockStore = {
   refresh: vi.fn(),
   getProjects: vi.fn(() => [{ id: 'p1', name: 'Alpha' }]),
   getProject: vi.fn(() => ({ id: 'p1', name: 'Alpha' })),
-  getSessions: vi.fn(() => []),
+  getSessions: vi.fn<() => ExportSession[]>(() => []),
   on: vi.fn(),
 };
 
@@ -34,6 +47,12 @@ import { HookManager } from '../hooks/HookManager';
 import { DashboardPanel } from '../webviews/DashboardPanel';
 import { ProjectPanel } from '../webviews/ProjectPanel';
 
+function getRegisteredCommand(name: string): (...args: unknown[]) => unknown {
+  const command = vi.mocked(vscode.commands.registerCommand).mock.calls.find((call) => call[0] === name)?.[1];
+  expect(command).toBeDefined();
+  return command as (...args: unknown[]) => unknown;
+}
+
 describe('extension activate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,9 +64,9 @@ describe('extension activate', () => {
       if (key === 'hooksConfigured') return false;
       return defaultValue;
     });
-    vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(undefined as any);
+    vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(undefined);
 
-    await activate(context as any);
+    await activate(context as unknown as vscode.ExtensionContext);
 
     expect(DashboardStore).toHaveBeenCalledOnce();
     expect(HookManager).toHaveBeenCalledOnce();
@@ -68,15 +87,15 @@ describe('extension activate', () => {
       return defaultValue;
     });
     vi.mocked(vscode.window.showInformationMessage)
-      .mockResolvedValueOnce('Yes, configure hooks' as any)
-      .mockResolvedValueOnce(undefined as any);
+      .mockResolvedValueOnce('Yes, configure hooks' as unknown as InfoMessageResult)
+      .mockResolvedValueOnce(undefined);
 
-    await activate(context as any);
+    await activate(context as unknown as vscode.ExtensionContext);
 
     expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);
     expect(context.globalState.update).toHaveBeenCalledWith('hooksConfigured', true);
 
-    const openProjectHandler = vi.mocked(vscode.commands.registerCommand).mock.calls.find((call) => call[0] === 'claudeDashboard.openProject')?.[1] as any;
+    const openProjectHandler = getRegisteredCommand('claudeDashboard.openProject');
     openProjectHandler('p1');
     expect(ProjectPanel.createOrShow).toHaveBeenCalledWith(context, mockStore, 'p1');
   });
@@ -87,7 +106,7 @@ describe('extension activate', () => {
       if (key === 'hooksConfigured') return true;
       return defaultValue;
     });
-    vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(vscode.Uri.file('/tmp/sessions.json') as any);
+    vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(vscode.Uri.file('/tmp/sessions.json'));
 
     mockStore.getProject.mockReturnValue({ id: 'p1', name: 'Alpha' });
     mockStore.getSessions.mockReturnValue([
@@ -103,10 +122,10 @@ describe('extension activate', () => {
       },
     ]);
 
-    await activate(context as any);
+    await activate(context as unknown as vscode.ExtensionContext);
 
-    const refreshHandler = vi.mocked(vscode.commands.registerCommand).mock.calls.find((call) => call[0] === 'claudeDashboard.refresh')?.[1] as any;
-    const exportHandler = vi.mocked(vscode.commands.registerCommand).mock.calls.find((call) => call[0] === 'claudeDashboard.exportSessions')?.[1] as any;
+    const refreshHandler = getRegisteredCommand('claudeDashboard.refresh');
+    const exportHandler = getRegisteredCommand('claudeDashboard.exportSessions');
 
     refreshHandler();
     await exportHandler('p1', 'json');

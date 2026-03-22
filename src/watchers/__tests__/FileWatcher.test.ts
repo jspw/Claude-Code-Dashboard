@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import type * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileWatcher } from '../FileWatcher';
 
@@ -15,16 +16,20 @@ describe('FileWatcher', () => {
     const close = vi.fn();
     const on = vi.fn();
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.watch).mockImplementation((_dir, _opts, cb: any) => {
-      cb('change', 'proj/a.jsonl');
-      cb('change', 'proj/a.jsonl');
-      cb('change', 'proj/readme.md');
-      return { close, on } as any;
+    vi.mocked(fs.watch).mockImplementation((...args: unknown[]) => {
+      const cb = args[2];
+      if (typeof cb !== 'function') {
+        throw new Error('watch listener missing');
+      }
+      cb?.('change', 'proj/a.jsonl');
+      cb?.('change', 'proj/a.jsonl');
+      cb?.('change', 'proj/readme.md');
+      return { close, on } as unknown as fs.FSWatcher;
     });
 
-    const watcher = new FileWatcher('/claude', { onFileChanged } as any);
-    const context = { subscriptions: [] as any[] };
-    watcher.start(context as any);
+    const watcher = new FileWatcher('/claude', { onFileChanged } as unknown as ConstructorParameters<typeof FileWatcher>[1]);
+    const context = { subscriptions: [] as vscode.Disposable[] };
+    watcher.start(context as unknown as vscode.ExtensionContext);
 
     vi.advanceTimersByTime(299);
     expect(onFileChanged).not.toHaveBeenCalled();
