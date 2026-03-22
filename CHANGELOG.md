@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## 1.0.0 (2026-03-22)
+
+
+### Features
+
+* markdown show preview for session's prompts ([2d7878a](https://github.com/jspw/Claude-Code-Dashboard/commit/2d7878a2148228f5c4a8a414a1cb24be7eb7a015))
+
 ## [Unreleased]
 
 ---
