@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.5.1](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.5.0...claude-code-dashboard-v1.5.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* type error for unit tests ([9ee2de8](https://github.com/jspw/Claude-Code-Dashboard/commit/9ee2de84ae2127b21b15c96fde1d16db76f5da4d))
+
 ## [1.5.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.4.0...claude-code-dashboard-v1.5.0) (2026-03-22)
 
 
