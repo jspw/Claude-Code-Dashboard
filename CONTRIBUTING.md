@@ -214,7 +214,7 @@ Releases are fully automated via [`release-please`](https://github.com/googleapi
    - `feat:` commits → minor bump
    - `feat!:` or `BREAKING CHANGE:` footer → major bump
 3. When you're ready to ship, **merge the Release PR**. The bot creates a GitHub Release and tag automatically.
-4. Creating the GitHub Release fires the publish workflow, which publishes to both VS Code Marketplace and Open VSX.
+4. When Release Please creates a GitHub Release, the same workflow immediately runs the publish job and publishes to both VS Code Marketplace and Open VSX.
 
 ### Summary
 
