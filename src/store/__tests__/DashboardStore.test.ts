@@ -2,6 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPopulatedStore } from '../../__tests__/helpers/store-helpers';
 import { makeProject, makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/sessions';
 
+type SettingsParserLike = {
+  readClaudeMd(projectPath: string): string | null;
+  readProjectSettings(projectPath: string): Record<string, unknown>;
+  readGlobalSettings(claudeDir: string): Record<string, unknown>;
+  readUserClaudeJson(homeDir: string): Record<string, unknown>;
+  readProjectMcpJson(projectPath: string): Record<string, unknown>;
+  readProjectCommands(projectPath: string): { name: string; content: string }[];
+};
+type StoreWithSettingsParser = {
+  settingsParser: SettingsParserLike;
+};
+
 describe('DashboardStore', () => {
   const NOW = new Date('2025-01-15T12:00:00Z').getTime();
   const DAY = 86_400_000;
@@ -135,7 +147,7 @@ describe('DashboardStore', () => {
 
   it('merges config sources and MCP tool counts', () => {
     const store = makeStore();
-    const settingsParser = (store as any).settingsParser;
+    const settingsParser = (store as unknown as StoreWithSettingsParser).settingsParser;
     vi.spyOn(settingsParser, 'readClaudeMd').mockReturnValue('# Rules');
     vi.spyOn(settingsParser, 'readProjectSettings').mockReturnValue({ mcpServers: { github: { command: 'from-project' } }, project: true });
     vi.spyOn(settingsParser, 'readGlobalSettings').mockReturnValue({ mcpServers: { github: { command: 'from-global' }, local: { type: 'stdio' } } });

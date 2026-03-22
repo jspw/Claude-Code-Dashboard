@@ -4,10 +4,16 @@ import { act, render, screen } from './helpers/render-helpers';
 import { makeProject, makeSession, makeStats } from './fixtures/test-data';
 import App from '../App';
 
+type TestWindow = Window & {
+  __INITIAL_VIEW__: string;
+  __INITIAL_DATA__: unknown;
+};
+
 describe('App', () => {
   it('renders dashboard by default and merges stateUpdate/liveEvent messages', async () => {
-    (window as any).__INITIAL_VIEW__ = 'dashboard';
-    (window as any).__INITIAL_DATA__ = { projects: [], stats: makeStats({ totalProjects: 0, activeSessionCount: 0 }) };
+    const testWindow = window as TestWindow;
+    testWindow.__INITIAL_VIEW__ = 'dashboard';
+    testWindow.__INITIAL_DATA__ = { projects: [], stats: makeStats({ totalProjects: 0, activeSessionCount: 0 }) };
     render(<App />);
     expect(screen.getByText('Claude Code Dashboard')).toBeInTheDocument();
 
@@ -21,14 +27,15 @@ describe('App', () => {
   });
 
   it('renders sidebar and project views from initial globals', () => {
-    (window as any).__INITIAL_VIEW__ = 'sidebar';
-    (window as any).__INITIAL_DATA__ = { projects: [makeProject({ name: 'Sidebar Project' })], stats: makeStats() };
+    const testWindow = window as TestWindow;
+    testWindow.__INITIAL_VIEW__ = 'sidebar';
+    testWindow.__INITIAL_DATA__ = { projects: [makeProject({ name: 'Sidebar Project' })], stats: makeStats() };
     const { unmount } = render(<App />);
     expect(screen.getByText('Sidebar Project')).toBeInTheDocument();
 
     unmount();
-    (window as any).__INITIAL_VIEW__ = 'project';
-    (window as any).__INITIAL_DATA__ = { project: makeProject({ name: 'Project View' }), sessions: [makeSession({ sessionSummary: 'Summary' })] };
+    testWindow.__INITIAL_VIEW__ = 'project';
+    testWindow.__INITIAL_DATA__ = { project: makeProject({ name: 'Project View' }), sessions: [makeSession({ sessionSummary: 'Summary' })] };
     render(<App />);
     expect(screen.getByText('Project View')).toBeInTheDocument();
     expect(screen.getByText('Summary')).toBeInTheDocument();

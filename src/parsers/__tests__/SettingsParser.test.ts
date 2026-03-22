@@ -4,6 +4,11 @@ import { SettingsParser } from '../SettingsParser';
 
 vi.mock('fs');
 
+const asReadResult = (content: string): ReturnType<typeof fs.readFileSync> =>
+  content as unknown as ReturnType<typeof fs.readFileSync>;
+const asDirEntries = (entries: string[]): ReturnType<typeof fs.readdirSync> =>
+  entries as unknown as ReturnType<typeof fs.readdirSync>;
+
 describe('SettingsParser', () => {
   let parser: SettingsParser;
 
@@ -15,10 +20,10 @@ describe('SettingsParser', () => {
   it('reads global, user, and project json files', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync)
-      .mockReturnValueOnce('{"hooks":{"Stop":[]}}' as any)
-      .mockReturnValueOnce('{"mcpServers":{"github":{"command":"npx"}}}' as any)
-      .mockReturnValueOnce('{"theme":"dark"}' as any)
-      .mockReturnValueOnce('{"mcpServers":{"local":{"type":"stdio"}}}' as any);
+      .mockReturnValueOnce(asReadResult('{"hooks":{"Stop":[]}}'))
+      .mockReturnValueOnce(asReadResult('{"mcpServers":{"github":{"command":"npx"}}}'))
+      .mockReturnValueOnce(asReadResult('{"theme":"dark"}'))
+      .mockReturnValueOnce(asReadResult('{"mcpServers":{"local":{"type":"stdio"}}}'));
 
     expect(parser.readGlobalSettings('/claude')).toEqual({ hooks: { Stop: [] } });
     expect(parser.readUserClaudeJson('/home/user')).toEqual({ mcpServers: { github: { command: 'npx' } } });
@@ -31,17 +36,17 @@ describe('SettingsParser', () => {
     expect(parser.readGlobalSettings('/claude')).toEqual({});
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockImplementation(() => '{not json' as any);
+    vi.mocked(fs.readFileSync).mockImplementation(() => asReadResult('{not json'));
     expect(parser.readProjectSettings('/project')).toEqual({});
   });
 
   it('reads CLAUDE.md and project commands in sorted order', () => {
     vi.mocked(fs.existsSync).mockImplementation((file) => String(file).includes('CLAUDE.md') || String(file).includes('commands'));
-    vi.mocked(fs.readdirSync).mockReturnValue(['zeta.md', 'alpha.md', 'notes.txt'] as any);
+    vi.mocked(fs.readdirSync).mockReturnValue(asDirEntries(['zeta.md', 'alpha.md', 'notes.txt']));
     vi.mocked(fs.readFileSync)
-      .mockReturnValueOnce('# Rules' as any)
-      .mockReturnValueOnce('alpha content' as any)
-      .mockReturnValueOnce('zeta content' as any);
+      .mockReturnValueOnce(asReadResult('# Rules'))
+      .mockReturnValueOnce(asReadResult('alpha content'))
+      .mockReturnValueOnce(asReadResult('zeta content'));
 
     expect(parser.readClaudeMd('/project')).toBe('# Rules');
     expect(parser.readProjectCommands('/project')).toEqual([

@@ -3,11 +3,21 @@ Generate a filled GitHub pull request description based on what this branch intr
 Run the following shell commands to gather context, then use the results to fill in the PR template below. Replace all HTML comments and placeholders with real content inferred from the diff. Keep all checkboxes unchecked — the author will check them.
 
 ```bash
-git diff main...HEAD
-git diff --stat main...HEAD
-git log main..HEAD --oneline
 git branch --show-current
+git log origin/dev..HEAD --oneline
+git diff origin/dev...HEAD --stat
+git diff origin/dev...HEAD
 ```
+
+If `git log origin/dev..HEAD` returns nothing (everything is already pushed), fall back to:
+
+```bash
+git log main..HEAD --oneline
+git diff main...HEAD --stat
+git diff main...HEAD
+```
+
+Only describe the changes from the commits shown — do not include changes from commits already pushed to `origin/dev` or already on `main`.
 
 Fill this template. For checkboxes, apply this logic:
 - `[x]` = this is true / applies / was done

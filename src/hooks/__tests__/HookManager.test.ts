@@ -4,6 +4,11 @@ import { HookManager } from '../HookManager';
 
 vi.mock('fs');
 
+type HookState = {
+  get(key: string): unknown;
+  update(key: string, value: unknown): Promise<void>;
+};
+
 describe('HookManager', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -23,10 +28,11 @@ describe('HookManager', () => {
         PostToolUse: [{ hooks: [{ command: 'old .dashboard-events.jsonl hook' }] }, { matcher: 'keep', hooks: [{ command: 'echo keep' }] }],
         Stop: [{ hooks: [{ command: 'old .dashboard-events.jsonl stop' }] }],
       },
-    }) as any);
+    }));
     const update = vi.fn(() => Promise.resolve());
+    const state: HookState = { get: vi.fn(), update };
 
-    await manager.injectHooks({ get: vi.fn(), update } as any);
+    await manager.injectHooks(state);
 
     expect(fs.copyFileSync).toHaveBeenCalledWith('/claude/settings.json', '/claude/settings.json.bak');
     expect(fs.writeFileSync).toHaveBeenCalledOnce();

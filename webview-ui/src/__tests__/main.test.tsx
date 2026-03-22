@@ -1,12 +1,18 @@
 import { act, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type TestWindow = Window & {
+  __INITIAL_VIEW__: string;
+  __INITIAL_DATA__: unknown;
+};
+
 describe('main bootstrap', () => {
   beforeEach(() => {
     vi.resetModules();
     document.body.innerHTML = '<div id="root"></div>';
-    (window as any).__INITIAL_VIEW__ = 'dashboard';
-    (window as any).__INITIAL_DATA__ = {
+    const testWindow = window as TestWindow;
+    testWindow.__INITIAL_VIEW__ = 'dashboard';
+    testWindow.__INITIAL_DATA__ = {
       projects: [],
       stats: {
         totalProjects: 0,

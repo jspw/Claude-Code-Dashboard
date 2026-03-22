@@ -16,6 +16,9 @@ import {
 
 vi.mock('fs');
 
+const asReadResult = (content: string): ReturnType<typeof fs.readFileSync> =>
+  content as unknown as ReturnType<typeof fs.readFileSync>;
+
 describe('SessionParser', () => {
   let parser: SessionParser;
 
@@ -27,7 +30,7 @@ describe('SessionParser', () => {
   });
 
   it('reads cwd from the first valid entry', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue(MINIMAL_SESSION as any);
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(MINIMAL_SESSION));
     expect(parser.readCwd('/tmp/session.jsonl')).toBe('/home/user/project');
   });
 
@@ -39,12 +42,12 @@ describe('SessionParser', () => {
   });
 
   it('returns null for empty sessions', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue(EMPTY_CONTENT as any);
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(EMPTY_CONTENT));
     expect(parser.parseFile('/sessions/abc.jsonl', 'proj-1')).toBeNull();
   });
 
   it('parses a minimal session', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue(MINIMAL_SESSION as any);
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(MINIMAL_SESSION));
     const result = parser.parseFile('/sessions/abc123.jsonl', 'proj-1');
 
     expect(result).not.toBeNull();
@@ -61,9 +64,9 @@ describe('SessionParser', () => {
 
   it('extracts array content, strips command messages, and counts prompts', () => {
     vi.mocked(fs.readFileSync)
-      .mockReturnValueOnce(SESSION_ARRAY_CONTENT as any)
-      .mockReturnValueOnce(SESSION_WITH_COMMAND_MESSAGE as any)
-      .mockReturnValueOnce(MULTI_TURN_SESSION as any);
+      .mockReturnValueOnce(asReadResult(SESSION_ARRAY_CONTENT))
+      .mockReturnValueOnce(asReadResult(SESSION_WITH_COMMAND_MESSAGE))
+      .mockReturnValueOnce(asReadResult(MULTI_TURN_SESSION));
 
     const arrayResult = parser.parseFile('/sessions/one.jsonl', 'proj-1');
     const commandResult = parser.parseFile('/sessions/two.jsonl', 'proj-1');
@@ -77,8 +80,8 @@ describe('SessionParser', () => {
 
   it('tracks tool calls, modified files, created files, and MCP server names', () => {
     vi.mocked(fs.readFileSync)
-      .mockReturnValueOnce(SESSION_WITH_TOOLS as any)
-      .mockReturnValueOnce(SESSION_WITH_MCP as any);
+      .mockReturnValueOnce(asReadResult(SESSION_WITH_TOOLS))
+      .mockReturnValueOnce(asReadResult(SESSION_WITH_MCP));
 
     const toolResult = parser.parseFile('/sessions/tools.jsonl', 'proj-1');
     const mcpResult = parser.parseFile('/sessions/mcp.jsonl', 'proj-1');
@@ -91,8 +94,8 @@ describe('SessionParser', () => {
 
   it('tracks cache usage, thinking tokens, and cost details', () => {
     vi.mocked(fs.readFileSync)
-      .mockReturnValueOnce(SESSION_WITH_CACHE as any)
-      .mockReturnValueOnce(SESSION_WITH_THINKING as any);
+      .mockReturnValueOnce(asReadResult(SESSION_WITH_CACHE))
+      .mockReturnValueOnce(asReadResult(SESSION_WITH_THINKING));
 
     const cacheResult = parser.parseFile('/sessions/cache.jsonl', 'proj-1');
     const thinkingResult = parser.parseFile('/sessions/thinking.jsonl', 'proj-1');
@@ -113,7 +116,7 @@ describe('SessionParser', () => {
       JSON.stringify({ type: 'user', uuid: 'u2', timestamp: '2025-01-15T10:11:00Z', message: { content: 'Q2' } }),
       JSON.stringify({ type: 'assistant', uuid: 'a2', timestamp: '2025-01-15T10:12:00Z', message: { model: 'claude-sonnet-4', content: [{ type: 'text', text: 'A2' }], usage: { input_tokens: 100, output_tokens: 50 }, stop_reason: 'stop_sequence' } }),
     ].join('\n');
-    vi.mocked(fs.readFileSync).mockReturnValue(idleSession as any);
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(idleSession));
 
     const result = parser.parseFile('/sessions/idle.jsonl', 'proj-1');
 
@@ -125,7 +128,7 @@ describe('SessionParser', () => {
   });
 
   it('handles malformed lines without throwing', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue(MALFORMED_LINES as any);
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(MALFORMED_LINES));
     const result = parser.parseFile('/sessions/bad.jsonl', 'proj-1');
 
     expect(result).not.toBeNull();
