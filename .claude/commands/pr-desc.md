@@ -9,7 +9,15 @@ git log main..HEAD --oneline
 git branch --show-current
 ```
 
-Fill this template:
+Fill this template. For checkboxes, apply this logic:
+- `[x]` = this is true / applies / was done
+- `[ ]` = this does not apply or cannot be confirmed
+
+Rules per section:
+- **Type of change**: check all types that apply based on the diff (can be multiple)
+- **Testing**: assume the author tested their own work — check all testing items unless there's a clear reason not to (e.g. no tests added/updated → leave that one unchecked)
+- **UI changes**: if diff touches `webview-ui/`, uncheck "No UI changes" and check the design system items; if no webview changes, check "No UI changes" and leave the rest unchecked
+- **Checklist**: check "follows conventions" and "read CONTRIBUTING" by default; check "no console.log" only if the diff contains no `console.log` lines; check "no new dependencies" only if no new deps were added
 
 ## Summary
 
@@ -46,4 +54,4 @@ Closes #
 - [ ] No new dependencies added without discussion
 - [ ] No `console.log` or debug statements left in
 
-Output only the filled template as plain markdown text — no wrapper code blocks, no preamble, no explanation. The output should be directly pasteable into a GitHub PR description field.
+Wrap the entire filled template inside a single fenced code block (``` ``` ```) with no language tag, so the raw markdown syntax (##, - [ ], etc.) is visible and copyable. No preamble, no explanation outside the code block.
