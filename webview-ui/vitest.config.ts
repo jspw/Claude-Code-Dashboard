@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/__tests__/**', 'src/main.tsx'],
+      exclude: ['src/**/__tests__/**', 'src/main.tsx', 'src/types.ts'],
       thresholds: { lines: 80, branches: 75 },
     },
     setupFiles: ['src/__tests__/setup.ts'],
