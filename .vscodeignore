@@ -23,6 +23,20 @@ webview-ui/package-lock.json
 PRODUCT.md
 TECHNICAL.md
 DATA_SOURCES.md
+docs/**
+CHANGELOG.md
+README.md
+
+# Tests & test tooling
+src/__tests__/**
+webview-ui/src/__tests__/**
+vitest.config.ts
+webview-ui/vitest.config.ts
+
+# Release tooling
+.github/**
+release-please-config.json
+.release-please-manifest.json
 
 # Misc
 .DS_Store

@@ -4,3 +4,8 @@ webview-ui/node_modules/
 webview-ui/dist/
 *.vsix
 .DS_Store
+coverage/
+webview-ui/coverage/
+
+# Claude Code — local-only settings (personal overrides, not for team)
+.claude/settings.local.json
