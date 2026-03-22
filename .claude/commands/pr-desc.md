@@ -46,4 +46,4 @@ Closes #
 - [ ] No new dependencies added without discussion
 - [ ] No `console.log` or debug statements left in
 
-Output only the filled template, nothing else.
+Output only the filled template as plain markdown text — no wrapper code blocks, no preamble, no explanation. The output should be directly pasteable into a GitHub PR description field.
