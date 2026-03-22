@@ -22,13 +22,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Bug Fixes
 
 * **release:** resolve release version issue ([f6d21a2](https://github.com/jspw/Claude-Code-Dashboard/commit/f6d21a25139bd87e0ef5c795b962298e1d90bb8b))
-* **release:** resolve release version issue ([f6d21a2](https://github.com/jspw/Claude-Code-Dashboard/commit/f6d21a25139bd87e0ef5c795b962298e1d90bb8b))
 * **release:** resolve release version issue ([afb43e4](https://github.com/jspw/Claude-Code-Dashboard/commit/afb43e4ae03ca1e2d7f63fa70439426e7499c60f))
 * **release:** resolve release version issue ([ced3e89](https://github.com/jspw/Claude-Code-Dashboard/commit/ced3e8987459882c2ca1ba4354486bcb8b09d86c))
-
-## [Unreleased]
-
----
 
 ## [1.3.0] — 2025
 

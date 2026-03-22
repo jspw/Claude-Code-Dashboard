@@ -35,6 +35,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            webview-ui/package-lock.json
 
       - name: Install root deps
         run: npm ci
@@ -46,14 +49,17 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Install publishing tools
-        run: npm install -g @vscode/vsce ovsx
-
       - name: Package extension
-        run: vsce package
+        run: npx vsce package
+
+      - name: Upload vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-${{ needs.release-please.outputs.tag_name }}
+          path: "*.vsix"
 
       - name: Publish to VS Code Marketplace
-        run: vsce publish --pat "${{ secrets.VSCE_PAT }}"
+        run: npx vsce publish --pat "${{ secrets.VSCE_PAT }}"
 
       - name: Publish to Open VSX
-        run: ovsx publish *.vsix --pat "${{ secrets.OVSX_PAT }}"
+        run: npx ovsx publish *.vsix --pat "${{ secrets.OVSX_PAT }}"
