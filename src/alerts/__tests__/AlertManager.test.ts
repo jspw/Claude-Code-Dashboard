@@ -1,20 +1,34 @@
 import * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlertManager } from '../AlertManager';
+import { DashboardStore, Project, Session } from '../../store/DashboardStore';
+
+type GlobalStateMock = {
+  get: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+};
+type AlertStoreMock = {
+  on: ReturnType<typeof vi.fn>;
+  getMonthlyTokens: ReturnType<typeof vi.fn>;
+  getMonthlyUsage: ReturnType<typeof vi.fn>;
+  getProjects: ReturnType<typeof vi.fn>;
+  getSessions: ReturnType<typeof vi.fn>;
+};
 
 describe('AlertManager', () => {
-  const store = {
+  const store: AlertStoreMock = {
     on: vi.fn(),
     getMonthlyTokens: vi.fn(),
     getMonthlyUsage: vi.fn(),
     getProjects: vi.fn(),
     getSessions: vi.fn(),
   };
+  const globalState: GlobalStateMock = {
+    get: vi.fn(),
+    update: vi.fn(() => Promise.resolve()),
+  };
   const context = {
-    globalState: {
-      get: vi.fn(),
-      update: vi.fn(() => Promise.resolve()),
-    },
+    globalState,
   };
 
   beforeEach(() => {
@@ -27,11 +41,11 @@ describe('AlertManager', () => {
         if (key === 'monthlyBudgetUsd') return 10;
         return def;
       }),
-    } as any);
+    } as unknown as vscode.WorkspaceConfiguration);
   });
 
   it('wires update listeners in the constructor', () => {
-    new AlertManager(store as any, context as any);
+    new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
     expect(store.on).toHaveBeenCalledWith('updated', expect.any(Function));
   });
 
@@ -42,7 +56,7 @@ describe('AlertManager', () => {
     store.getMonthlyUsage.mockReturnValue({ tokens: 1500, costUsd: 12 });
     context.globalState.get.mockReturnValue(0);
 
-    new AlertManager(store as any, context as any);
+    new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
     updateHandler();
 
     expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
@@ -51,10 +65,10 @@ describe('AlertManager', () => {
   });
 
   it('shows weekly digest only on Mondays with activity', () => {
-    const manager = new AlertManager(store as any, context as any);
+    const manager = new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
     context.globalState.get.mockReturnValue(0);
-    store.getProjects.mockReturnValue([{ id: 'p1', name: 'Alpha' }]);
-    store.getSessions.mockReturnValue([{ startTime: Date.now() - 1000, totalTokens: 12000 }]);
+    store.getProjects.mockReturnValue([{ id: 'p1', name: 'Alpha' } as unknown as Project]);
+    store.getSessions.mockReturnValue([{ startTime: Date.now() - 1000, totalTokens: 12000 } as unknown as Session]);
 
     manager.checkWeeklyDigest();
 

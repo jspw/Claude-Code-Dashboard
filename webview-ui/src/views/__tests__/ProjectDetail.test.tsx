@@ -4,10 +4,11 @@ import { act, fireEvent, render, screen } from '../../__tests__/helpers/render-h
 import { mockPostMessage } from '../../__tests__/setup';
 import { makeProject, makeSession } from '../../__tests__/fixtures/test-data';
 import ProjectDetail from '../ProjectDetail';
+import { Project } from '../../types';
 
 describe('ProjectDetail view', () => {
   it('renders fallback when project is missing', () => {
-    render(<ProjectDetail project={null as any} sessions={[]} />);
+    render(<ProjectDetail project={null as unknown as Project} sessions={[]} />);
     expect(screen.getByText('Project not found.')).toBeInTheDocument();
   });
 

@@ -2,14 +2,22 @@ import * as vscode from 'vscode';
 import { describe, expect, it, vi } from 'vitest';
 import { getWebviewContent } from '../getWebviewContent';
 
+type WebviewLike = {
+  cspSource: string;
+  asWebviewUri: (localResource: vscode.Uri) => vscode.Uri;
+};
+
 describe('getWebviewContent', () => {
   it('embeds initial state, view, resource uris, and escaped closing tags', () => {
-    const webview = {
+    const webview: WebviewLike = {
       cspSource: 'vscode-resource:',
-      asWebviewUri: vi.fn((uri) => `webview:${(uri as any).path}`),
-    } as any;
+      asWebviewUri: vi.fn((uri: vscode.Uri) => ({
+        path: `webview:${uri.path}`,
+        toString: () => `webview:${uri.path}`,
+      } as unknown as vscode.Uri)),
+    };
 
-    const html = getWebviewContent(webview, vscode.Uri.file('/ext'), 'dashboard', { value: '</script>' });
+    const html = getWebviewContent(webview as vscode.Webview, vscode.Uri.file('/ext'), 'dashboard', { value: '</script>' });
 
     expect(html).toContain('__INITIAL_VIEW__ = "dashboard"');
     expect(html).toContain('webview:webview-ui/dist/assets/index.js');

@@ -1,18 +1,51 @@
 import * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPanel } from '../DashboardPanel';
+import { DashboardStore, LiveEvent, ProjectedCost, StreakData, EfficiencyStats, WeeklyRecap } from '../../store/DashboardStore';
+
+type DashboardMessage = { type: 'openProject'; projectId: string };
+type DashboardStoreMock = {
+  on: ReturnType<typeof vi.fn>;
+  getProjects: ReturnType<typeof vi.fn>;
+  getStats: ReturnType<typeof vi.fn>;
+  getUsageOverTime: ReturnType<typeof vi.fn>;
+  getUsageByProject: ReturnType<typeof vi.fn>;
+  getHeatmapData: ReturnType<typeof vi.fn>;
+  getPromptPatterns: ReturnType<typeof vi.fn>;
+  getAllPrompts: ReturnType<typeof vi.fn>;
+  getToolUsageStats: ReturnType<typeof vi.fn>;
+  getHotFiles: ReturnType<typeof vi.fn>;
+  getProjectedCost: ReturnType<typeof vi.fn>;
+  getStreak: ReturnType<typeof vi.fn>;
+  getEfficiencyStats: ReturnType<typeof vi.fn>;
+  getWeeklyRecap: ReturnType<typeof vi.fn>;
+  getRecentFileChanges: ReturnType<typeof vi.fn>;
+  getProductivityByHour: ReturnType<typeof vi.fn>;
+  getMonthlyUsage: ReturnType<typeof vi.fn>;
+};
+type WebviewPanelLike = {
+  webview: {
+    html: string;
+    postMessage: ReturnType<typeof vi.fn>;
+    onDidReceiveMessage: ReturnType<typeof vi.fn>;
+    asWebviewUri: ReturnType<typeof vi.fn>;
+    cspSource: string;
+  };
+  reveal: ReturnType<typeof vi.fn>;
+  onDidDispose: ReturnType<typeof vi.fn>;
+};
 
 describe('DashboardPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (DashboardPanel as any).currentPanel = undefined;
+    DashboardPanel.currentPanel = undefined;
   });
 
   it('creates a panel, posts updates, forwards live events, and routes openProject', () => {
     let updatedHandler: () => void = () => {};
-    let liveHandler: (event: unknown) => void = () => {};
-    let messageHandler: (msg: any) => void = () => {};
-    const store = {
+    let liveHandler: (event: LiveEvent) => void = () => {};
+    let messageHandler: (msg: DashboardMessage) => void = () => {};
+    const store: DashboardStoreMock = {
       on: vi.fn((evt, cb) => {
         if (evt === 'updated') updatedHandler = cb;
         if (evt === 'liveEvent') liveHandler = cb;
@@ -26,15 +59,15 @@ describe('DashboardPanel', () => {
       getAllPrompts: vi.fn(() => []),
       getToolUsageStats: vi.fn(() => []),
       getHotFiles: vi.fn(() => []),
-      getProjectedCost: vi.fn(() => null),
-      getStreak: vi.fn(() => null),
-      getEfficiencyStats: vi.fn(() => null),
-      getWeeklyRecap: vi.fn(() => null),
+      getProjectedCost: vi.fn(() => null as unknown as ProjectedCost),
+      getStreak: vi.fn(() => null as unknown as StreakData),
+      getEfficiencyStats: vi.fn(() => null as unknown as EfficiencyStats),
+      getWeeklyRecap: vi.fn(() => null as unknown as WeeklyRecap),
       getRecentFileChanges: vi.fn(() => []),
       getProductivityByHour: vi.fn(() => []),
-      getMonthlyUsage: vi.fn(() => ({ costUsd: 2 })),
+      getMonthlyUsage: vi.fn(() => ({ tokens: 0, costUsd: 2 })),
     };
-    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({ get: vi.fn(() => 10) } as any);
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({ get: vi.fn(() => 10) } as unknown as vscode.WorkspaceConfiguration);
     vi.mocked(vscode.window.createWebviewPanel).mockImplementation(() => ({
       webview: {
         html: '',
@@ -45,10 +78,13 @@ describe('DashboardPanel', () => {
       },
       reveal: vi.fn(),
       onDidDispose: vi.fn(),
-    }) as any);
+    }) as unknown as vscode.WebviewPanel);
 
-    DashboardPanel.createOrShow({ extensionUri: vscode.Uri.file('/ext') } as any, store as any);
-    const panel = vi.mocked(vscode.window.createWebviewPanel).mock.results[0].value as any;
+    DashboardPanel.createOrShow(
+      { extensionUri: vscode.Uri.file('/ext') } as Pick<vscode.ExtensionContext, 'extensionUri'> as vscode.ExtensionContext,
+      store as unknown as DashboardStore,
+    );
+    const panel = vi.mocked(vscode.window.createWebviewPanel).mock.results[0].value as WebviewPanelLike;
 
     updatedHandler();
     liveHandler({ type: 'tool_use', timestamp: 1 });

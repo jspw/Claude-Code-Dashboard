@@ -2,11 +2,25 @@ import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+type WithChildren = { children?: React.ReactNode };
+type VSCodeApi = {
+  postMessage(message: unknown): void;
+  getState(): unknown;
+  setState(state: unknown): void;
+};
+type TestWindow = Window & {
+  __INITIAL_VIEW__: string;
+  __INITIAL_DATA__: unknown;
+};
+type GlobalWithVsCode = typeof globalThis & {
+  acquireVsCodeApi: () => VSCodeApi;
+};
+
 vi.mock('recharts', () => ({
-  ResponsiveContainer: ({ children }: any) => children ?? null,
-  LineChart: ({ children }: any) => React.createElement('div', { 'data-testid': 'line-chart' }, children),
+  ResponsiveContainer: ({ children }: WithChildren) => children ?? null,
+  LineChart: ({ children }: WithChildren) => React.createElement('div', { 'data-testid': 'line-chart' }, children),
   Line: () => null,
-  BarChart: ({ children }: any) => React.createElement('div', { 'data-testid': 'bar-chart' }, children),
+  BarChart: ({ children }: WithChildren) => React.createElement('div', { 'data-testid': 'bar-chart' }, children),
   Bar: () => null,
   XAxis: () => null,
   YAxis: () => null,
@@ -14,15 +28,15 @@ vi.mock('recharts', () => ({
   CartesianGrid: () => null,
   Legend: () => null,
   Area: () => null,
-  AreaChart: ({ children }: any) => React.createElement('div', { 'data-testid': 'area-chart' }, children),
+  AreaChart: ({ children }: WithChildren) => React.createElement('div', { 'data-testid': 'area-chart' }, children),
   Cell: () => null,
-  PieChart: ({ children }: any) => React.createElement('div', { 'data-testid': 'pie-chart' }, children),
+  PieChart: ({ children }: WithChildren) => React.createElement('div', { 'data-testid': 'pie-chart' }, children),
   Pie: () => null,
 }));
 
 // Mock acquireVsCodeApi
 const mockPostMessage = vi.fn();
-(globalThis as any).acquireVsCodeApi = vi.fn(() => ({
+(globalThis as GlobalWithVsCode).acquireVsCodeApi = vi.fn(() => ({
   postMessage: mockPostMessage,
   getState: vi.fn(() => null),
   setState: vi.fn(),
@@ -46,5 +60,5 @@ Object.defineProperty(globalThis.navigator, 'clipboard', {
 });
 
 // Mock window.__INITIAL_VIEW__ and __INITIAL_DATA__
-Object.defineProperty(window, '__INITIAL_VIEW__', { value: 'dashboard', writable: true });
-Object.defineProperty(window, '__INITIAL_DATA__', { value: {}, writable: true });
+Object.defineProperty(window as TestWindow, '__INITIAL_VIEW__', { value: 'dashboard', writable: true });
+Object.defineProperty(window as TestWindow, '__INITIAL_DATA__', { value: {}, writable: true });
