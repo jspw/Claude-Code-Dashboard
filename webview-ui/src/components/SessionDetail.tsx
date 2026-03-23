@@ -84,6 +84,26 @@ function TurnToolBadge({ tc }: { tc: ToolCall }) {
   );
 }
 
+function truncateSessionId(id: string): string {
+  return id.slice(0, 8);
+}
+
+function SessionIdGlyph({ copied }: { copied: boolean }) {
+  if (copied) {
+    return (
+      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M1 1h4v4H1V1zm1 1v2h2V2H2zm5-1h4v4H7V1zm1 1v2h2V2H8zm5-1h2v2h-2V1zM1 7h4v4H1V7zm1 1v2h2V8H2zm5-1h4v4H7V7zm1 1v2h2V8H8zm5-1h2v2h-2V7zM1 13h2v2H1v-2zm6 0h4v2H7v-2zm6 0h2v2h-2v-2z"/>
+    </svg>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = React.useState(false);
   const copy = () => {
@@ -248,9 +268,45 @@ function TurnBlock({ turn }: { turn: Turn }) {
 
 export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
   const totalCost = session.costUsd + (session.subagentCostUsd ?? 0);
+  const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const copySessionId = React.useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(session.id);
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 1500);
+    } catch {
+      setCopyState('failed');
+      setTimeout(() => setCopyState('idle'), 2000);
+    }
+  }, [session.id]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
+        <button
+          type="button"
+          onClick={() => void copySessionId()}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono transition-all -my-0.5 ${
+            copyState === 'copied'
+              ? 'bg-green-500/20 !text-green-400 !opacity-100'
+              : copyState === 'failed'
+              ? 'bg-red-500/20 !text-red-400 !opacity-100'
+              : 'bg-[var(--vscode-editor-inactiveSelectionBackground)] hover:!opacity-90'
+          }`}
+          title={
+            copyState === 'copied'
+              ? `Copied full ID: ${session.id}`
+              : copyState === 'failed'
+              ? `Copy failed. Session ID: ${session.id}`
+              : `Copy ID: ${session.id}`
+          }
+          aria-label="Copy session ID"
+        >
+          <SessionIdGlyph copied={copyState === 'copied'} />
+          {copyState === 'copied' ? 'copied' : copyState === 'failed' ? 'failed' : truncateSessionId(session.id)}
+        </button>
+        <span>·</span>
         <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
         <span>·</span>
         <span>{formatDuration(session.durationMs)}</span>
