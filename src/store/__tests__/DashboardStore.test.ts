@@ -1,6 +1,10 @@
+import * as fs from 'fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DashboardStore } from '../DashboardStore';
 import { createPopulatedStore } from '../../__tests__/helpers/store-helpers';
 import { makeProject, makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/sessions';
+
+vi.mock('fs');
 
 type SettingsParserLike = {
   readClaudeMd(projectPath: string): string | null;
@@ -20,6 +24,7 @@ describe('DashboardStore', () => {
   const HOUR = 3_600_000;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
   });
@@ -177,5 +182,235 @@ describe('DashboardStore', () => {
     expect(store.getSessions('p1')[0].isActiveSession).toBe(false);
     vi.advanceTimersByTime(250);
     expect(updated).toHaveBeenCalledOnce();
+  });
+
+  it('covers empty-state getters and prompt categorization branches', () => {
+    const emptyStore = createPopulatedStore([], {});
+    expect(emptyStore.getProjectConfig('missing')).toEqual({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] });
+    expect(emptyStore.getMonthlyTokens()).toBe(0);
+    expect(emptyStore.getToolUsageStats()).toEqual([]);
+    expect(emptyStore.getStreak()).toEqual({ currentStreak: 0, longestStreak: 0, totalActiveDays: 0 });
+
+    const richProject = makeProject({ id: 'p3', name: 'Gamma', lastActive: NOW });
+    const richSession = makeSession({
+      id: 'branch-session',
+      projectId: 'p3',
+      promptCount: 5,
+      toolCallCount: 0,
+      totalTokens: 100,
+      costUsd: 0.01,
+      filesModified: [],
+      turns: [
+        makeTurn({ role: 'user', content: 'Refactor this module', timestamp: NOW }),
+        makeTurn({ role: 'user', content: 'Add a new feature', timestamp: NOW - 1 }),
+        makeTurn({ role: 'user', content: 'Write coverage tests', timestamp: NOW - 2 }),
+        makeTurn({ role: 'user', content: 'Brainstorm roadmap', timestamp: NOW - 3 }),
+      ],
+    });
+    const richStore = createPopulatedStore([richProject], { p3: [richSession] });
+
+    expect(richStore.searchPrompts('   ')).toEqual([]);
+    expect(richStore.getPromptPatterns().find((x) => x.category === 'Refactor')?.count).toBe(1);
+    expect(richStore.getPromptPatterns().find((x) => x.category === 'Feature')?.count).toBe(1);
+    expect(richStore.getPromptPatterns().find((x) => x.category === 'Test')?.count).toBe(1);
+    expect(richStore.getPromptPatterns().find((x) => x.category === 'Other')?.count).toBe(1);
+    expect(richStore.getProjectStats('p3').promptPatterns.find((x) => x.category === 'Feature')?.count).toBe(1);
+    expect(richStore.getProjectStats('p3').promptPatterns.find((x) => x.category === 'Test')?.count).toBe(1);
+  });
+
+  it('covers file aggregation, productivity defaults, and no-op live/file updates', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const project = makeProject({ id: 'p4', name: 'Delta', lastActive: NOW });
+    const repeated = makeSession({
+      id: 'repeat-1',
+      projectId: 'p4',
+      startTime: NOW - 2 * HOUR,
+      filesModified: ['/repo/file.ts'],
+      filesCreated: ['/repo/file.ts'],
+      toolCallCount: 4,
+      totalTokens: 200,
+      promptCount: 1,
+      turns: [],
+    });
+    const repeatedAgain = makeSession({
+      id: 'repeat-2',
+      projectId: 'p4',
+      startTime: NOW - HOUR,
+      filesModified: ['/repo/file.ts'],
+      filesCreated: [],
+      toolCallCount: 0,
+      totalTokens: 100,
+      promptCount: 1,
+      turns: [],
+    });
+    const zeroTime = makeSession({
+      id: 'zero-time',
+      projectId: 'p4',
+      startTime: 0,
+      endTime: null,
+      durationMs: null,
+      totalTokens: 0,
+      promptCount: 0,
+      toolCallCount: 0,
+      filesModified: [],
+      turns: [],
+    });
+    const store = createPopulatedStore([project], { p4: [repeated, repeatedAgain, zeroTime] });
+    const updated = vi.fn();
+    store.on('updated', updated);
+
+    store.handleLiveEvent({ type: 'notification', timestamp: NOW });
+    await store.onFileChanged('/outside/file.jsonl');
+    vi.advanceTimersByTime(250);
+
+    expect(store.getHotFiles(5)[0].editCount).toBe(2);
+    expect(store.getProjectFiles('p4')[0]).toMatchObject({ type: 'both', editCount: 2, lastTouched: NOW - HOUR });
+    expect(store.getProductivityByHour().find((entry) => entry.sessionCount === 0)?.avgToolCalls).toBe(0);
+    expect(updated).toHaveBeenCalledOnce();
+    errorSpy.mockRestore();
+  });
+
+  it('loads projects from disk, uses cache, and handles pid/subagent helpers', async () => {
+    const store = new DashboardStore('/claude', '/cache');
+    const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile');
+    parseFile.mockImplementation((...args: unknown[]) => {
+      const [filePath, projectId] = args as [string, string];
+      if (filePath.includes('subagents')) {
+        return makeSession({
+          id: 'subagent',
+          projectId,
+          costUsd: 0.3,
+          startTime: NOW - 5000,
+          turns: [makeTurn({ role: 'assistant', toolCalls: [makeToolCall({ name: 'Read' })] })],
+        });
+      }
+      return makeSession({
+        id: 'main-session',
+        projectId,
+        cwd: '/workspace/demo',
+        isActiveSession: false,
+        startTime: NOW - 1000,
+        endTime: NOW - 500,
+        totalTokens: 321,
+        costUsd: 0.2,
+        promptCount: 1,
+        toolCallCount: 1,
+        filesModified: ['/workspace/demo/file.ts'],
+        turns: [makeTurn({ role: 'assistant', timestamp: NOW - 500, toolCalls: [makeToolCall({ name: 'Read' })] })],
+      });
+    });
+
+    vi.mocked(fs.existsSync).mockImplementation((target) => {
+      const value = String(target);
+      return value === '/claude/projects'
+        || value === '/claude/projects/demo'
+        || value === '/claude/projects/demo/subagents'
+        || value === '/claude/sessions'
+        || value === '/cache/project-cache.json'
+        || value === '/workspace/demo';
+    });
+    vi.mocked(fs.readdirSync).mockImplementation((target, options?: unknown) => {
+      const value = String(target);
+      if (value === '/claude/projects') {
+        if (options && typeof options === 'object' && 'withFileTypes' in (options as Record<string, unknown>)) {
+          return [{ name: 'demo', isDirectory: () => true }] as unknown as ReturnType<typeof fs.readdirSync>;
+        }
+        return ['demo'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      if (value === '/claude/projects/demo') {
+        return ['session.jsonl', 'notes.txt'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      if (value === '/claude/projects/demo/subagents') {
+        return ['child.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      if (value === '/claude/sessions') {
+        return ['alive.json', 'dead.json', 'bad.json'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      if (value === '/workspace/demo') {
+        return ['package.json', 'tsconfig.json', 'pyproject.toml'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      return [] as unknown as ReturnType<typeof fs.readdirSync>;
+    });
+    vi.mocked(fs.statSync).mockImplementation((target) => {
+      const value = String(target);
+      if (value.endsWith('session.jsonl')) {
+        return { mtimeMs: NOW - 2000 } as fs.Stats;
+      }
+      return { mtimeMs: NOW } as fs.Stats;
+    });
+    vi.mocked(fs.readFileSync).mockImplementation((target) => {
+      const value = String(target);
+      if (value === '/cache/project-cache.json') {
+        return JSON.stringify({ version: 1, entries: {} }) as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('/alive.json')) {
+        return JSON.stringify({ pid: 100, sessionId: 'main-session' }) as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('/dead.json')) {
+        return JSON.stringify({ pid: 200, sessionId: 'dead-session' }) as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('/bad.json')) {
+        return '{bad' as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('child.jsonl')) {
+        return `${JSON.stringify({ parentSessionId: 'main-session' })}\n` as ReturnType<typeof fs.readFileSync>;
+      }
+      return '' as ReturnType<typeof fs.readFileSync>;
+    });
+    vi.spyOn(process, 'kill').mockImplementation(((pid: number) => {
+      if (pid === 200) {
+        throw new Error('dead');
+      }
+    }) as typeof process.kill);
+
+    await store.initialize();
+
+    expect(store.getProject('demo')).toMatchObject({
+      name: 'demo',
+      path: '/workspace/demo',
+      isActive: true,
+      totalCostUsd: 0.5,
+      techStack: ['Node.js', 'TypeScript', 'Python'],
+    });
+    expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
+    expect(store.getSessions('demo')[0].subagentCostUsd).toBe(0.3);
+    expect(store.getSubagentSessions('demo')).toHaveLength(1);
+    expect(fs.unlinkSync).toHaveBeenCalledWith('/claude/sessions/dead.json');
+    expect(fs.mkdirSync).toHaveBeenCalledWith('/cache', { recursive: true });
+    expect(fs.writeFileSync).toHaveBeenCalled();
+
+    parseFile.mockClear();
+    vi.mocked(fs.readFileSync).mockImplementation((target) => {
+      const value = String(target);
+      if (value === '/cache/project-cache.json') {
+        return JSON.stringify({
+          version: 2,
+          entries: {
+            demo: {
+              cachedAt: NOW + 5000,
+              project: makeProject({ id: 'demo', name: 'demo', path: '/workspace/demo', isActive: false }),
+              sessions: [makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false })],
+              subagentSessions: [],
+            },
+          },
+        }) as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('/alive.json')) {
+        return JSON.stringify({ pid: 100, sessionId: 'cached-session' }) as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('/dead.json')) {
+        return JSON.stringify({ pid: 200, sessionId: 'dead-session' }) as ReturnType<typeof fs.readFileSync>;
+      }
+      if (value.endsWith('/bad.json')) {
+        return '{bad' as ReturnType<typeof fs.readFileSync>;
+      }
+      return '' as ReturnType<typeof fs.readFileSync>;
+    });
+
+    await store.refresh();
+
+    expect(parseFile).not.toHaveBeenCalled();
+    expect(store.getSessions('demo')[0].id).toBe('cached-session');
+    expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
   });
 });

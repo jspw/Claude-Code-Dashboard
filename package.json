@@ -102,6 +102,8 @@
     "build:ui": "cd webview-ui && npm run build",
     "watch:ext": "node esbuild.js --watch",
     "watch:ui": "cd webview-ui && npm run dev",
+    "typecheck": "tsc --noEmit",
+    "typecheck:all": "npm run typecheck && cd webview-ui && npm run typecheck",
     "vscode:prepublish": "npm run build",
     "package": "vsce package",
     "test": "vitest run",

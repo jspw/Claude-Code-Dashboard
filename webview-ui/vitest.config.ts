@@ -12,7 +12,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/__tests__/**', 'src/main.tsx', 'src/types.ts'],
-      thresholds: { lines: 80, branches: 75 },
+      thresholds: { lines: 80, branches: 75, functions: 80, perFile: true },
     },
     setupFiles: ['src/__tests__/setup.ts'],
   },

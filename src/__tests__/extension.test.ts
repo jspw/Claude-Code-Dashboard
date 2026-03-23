@@ -135,4 +135,29 @@ describe('extension activate', () => {
     expect(vscode.workspace.fs.writeFile).toHaveBeenCalledTimes(2);
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Sessions exported to /tmp/sessions.json');
   });
+
+  it('covers openDashboard, skipped exports, and hook reinjection', async () => {
+    const context = createMockExtensionContext();
+    context.globalState.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'hooksConfigured') return true;
+      return defaultValue;
+    });
+    mockHookManager.needsReinjection.mockReturnValue(true);
+    vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(undefined);
+    mockStore.getProject.mockImplementationOnce(() => undefined as never);
+
+    await activate(context as unknown as vscode.ExtensionContext);
+
+    const openDashboardHandler = getRegisteredCommand('claudeDashboard.openDashboard');
+    const exportHandler = getRegisteredCommand('claudeDashboard.exportSessions');
+
+    openDashboardHandler();
+    await exportHandler('missing-project', 'json');
+    await exportHandler('p1', 'json');
+
+    expect(DashboardPanel.createOrShow).toHaveBeenCalledTimes(2);
+    expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+    expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);
+    expect(deactivate()).toBeUndefined();
+  });
 });

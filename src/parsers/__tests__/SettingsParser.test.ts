@@ -54,4 +54,17 @@ describe('SettingsParser', () => {
       { name: 'zeta', content: 'alpha content' },
     ]);
   });
+
+  it('returns null or empty arrays when markdown and command reads fail', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error('denied');
+    });
+    vi.mocked(fs.readdirSync).mockImplementation(() => {
+      throw new Error('denied');
+    });
+
+    expect(parser.readClaudeMd('/project')).toBeNull();
+    expect(parser.readProjectCommands('/project')).toEqual([]);
+  });
 });
