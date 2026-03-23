@@ -135,4 +135,18 @@ describe('SessionParser', () => {
     expect(result?.cwd).toBe('/test');
     expect(result?.turns).toHaveLength(1);
   });
+
+  it('returns null on fatal read errors and estimates fallback costs', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error('unreadable');
+    });
+
+    expect(parser.parseFile('/sessions/missing.jsonl', 'proj-1')).toBeNull();
+    expect(parser.estimateCost(1_000_000, 'missing-model')).toBe(9);
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-opus-4-1')).toBe(90);
+
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

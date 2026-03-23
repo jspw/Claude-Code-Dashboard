@@ -41,4 +41,22 @@ describe('HookManager', () => {
     expect(JSON.stringify(written.hooks.Stop)).toContain('.dashboard-events.jsonl');
     expect(update).toHaveBeenCalledWith('dashboardHookVersion', 2);
   });
+
+  it('creates fresh hook settings when the file is missing or invalid', async () => {
+    const manager = new HookManager('/claude');
+    vi.mocked(fs.existsSync).mockReturnValueOnce(false).mockReturnValueOnce(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error('bad file');
+    });
+
+    await manager.injectHooks();
+    await manager.injectHooks();
+
+    const firstWrite = JSON.parse(String(vi.mocked(fs.writeFileSync).mock.calls[0][1]));
+    const secondWrite = JSON.parse(String(vi.mocked(fs.writeFileSync).mock.calls[1][1]));
+
+    expect(firstWrite.hooks.PostToolUse).toHaveLength(1);
+    expect(firstWrite.hooks.Stop).toHaveLength(1);
+    expect(secondWrite.hooks.PostToolUse).toHaveLength(1);
+  });
 });

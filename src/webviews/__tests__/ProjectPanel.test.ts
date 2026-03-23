@@ -100,4 +100,64 @@ describe('ProjectPanel', () => {
     expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: 'sessionTurns', sessionId: 's1', turns: [{ id: 't1' }] });
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith('claudeDashboard.exportSessions', 'p1', 'csv');
   });
+
+  it('reuses an existing panel, falls back to a generic title, and handles missing sessions', async () => {
+    let messageHandler: (msg: ProjectMessage) => Promise<void> | void = () => {};
+    let disposeHandler: () => void = () => {};
+    const reveal = vi.fn();
+
+    const store: ProjectStoreMock = {
+      on: vi.fn(),
+      getProject: vi.fn(() => undefined),
+      getSessions: vi.fn(() => []),
+      getSubagentSessions: vi.fn(() => []),
+      getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] } as ProjectConfig)),
+      getProjectStats: vi.fn(() => ({
+        toolUsage: [],
+        usageOverTime: [],
+        promptPatterns: [],
+        efficiency: {
+          avgTokensPerPrompt: 0,
+          avgToolCallsPerSession: 0,
+          avgSessionDurationMin: 0,
+          firstTurnResolutionRate: 0,
+          avgActiveRatio: 0,
+        } as EfficiencyStats,
+        recentToolCalls: [],
+        weeklyStats: { sessions: 0, tokens: 0, costUsd: 0, dailyBreakdown: [] },
+      } as ProjectStatsLike)),
+      getProjectFiles: vi.fn(() => []),
+    };
+
+    vi.mocked(vscode.window.createWebviewPanel).mockImplementation(() => ({
+      webview: {
+        html: '',
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn((cb) => { messageHandler = cb; }),
+        asWebviewUri: vi.fn((u) => u),
+        cspSource: 'test',
+      },
+      reveal,
+      onDidDispose: vi.fn((cb) => { disposeHandler = cb; }),
+    }) as unknown as vscode.WebviewPanel);
+
+    const context = { extensionUri: vscode.Uri.file('/ext') } as Pick<vscode.ExtensionContext, 'extensionUri'> as vscode.ExtensionContext;
+
+    ProjectPanel.createOrShow(context, store as unknown as DashboardStore, 'missing');
+    const panel = vi.mocked(vscode.window.createWebviewPanel).mock.results[0].value as WebviewPanelLike;
+    await messageHandler({ type: 'exportSessions' });
+    await messageHandler({ type: 'getSessionTurns', sessionId: 'unknown' });
+    ProjectPanel.createOrShow(context, store as unknown as DashboardStore, 'missing');
+    disposeHandler();
+
+    expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
+      'claudeProject.missing',
+      'Claude Project',
+      vscode.ViewColumn.One,
+      expect.anything(),
+    );
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('claudeDashboard.exportSessions', 'missing', 'json');
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: 'sessionTurns', sessionId: 'unknown', turns: [] });
+    expect(reveal).toHaveBeenCalledWith(vscode.ViewColumn.One);
+  });
 });
