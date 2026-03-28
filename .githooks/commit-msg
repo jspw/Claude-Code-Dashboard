@@ -1,0 +1,3 @@
+#!/bin/sh
+
+node scripts/validate-commit-message.mjs --edit "$1"

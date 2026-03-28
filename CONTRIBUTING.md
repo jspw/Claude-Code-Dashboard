@@ -198,6 +198,8 @@ chore: bump vsce to 2.24
 
 Keep the subject line under 72 characters. Use the body for the "why" when needed.
 
+Running `npm install` in the repo configures a local `commit-msg` hook that rejects non-conventional commit subjects before Git creates the commit.
+
 ---
 
 ## Releasing a new version
@@ -213,6 +215,7 @@ Releases are fully automated via [`release-please`](https://github.com/googleapi
    - `fix:` commits → patch bump
    - `feat:` commits → minor bump
    - `feat!:` or `BREAKING CHANGE:` footer → major bump
+   - `main` must receive conventional commit subjects, so do not use GitHub's **Create a merge commit** option when merging into `main`. Use **Squash and merge** or **Rebase and merge** with a conventional PR title instead.
 3. When you're ready to ship, **merge the Release PR**. The bot creates a GitHub Release and tag automatically.
 4. When Release Please creates a GitHub Release, the same workflow immediately runs the publish job and publishes to both VS Code Marketplace and Open VSX.
 
