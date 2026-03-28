@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -17,6 +19,12 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             webview-ui/package-lock.json
+
+      - name: Validate PR title
+        run: node scripts/validate-commit-message.mjs --message "${{ github.event.pull_request.title }}" --source "pull request title"
+
+      - name: Validate PR commit messages
+        run: node scripts/validate-commit-range.mjs "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
       - name: Install root deps
         run: npm ci
