@@ -117,8 +117,11 @@ describe('DashboardStore', () => {
     expect(stats.activeSessionCount).toBe(1);
     expect(stats.tokensTodayTotal).toBe(5000);
     expect(stats.tokensWeekTotal).toBe(8000);
+    expect(stats.costTodayUsd).toBeCloseTo(0.5);
+    expect(stats.costWeekUsd).toBeCloseTo(0.6);
     expect(usage).toHaveLength(7);
     expect(usage[6].tokens).toBe(5000);
+    expect(usage[6].costUsd).toBeCloseTo(0.5);
     expect(monthly).toEqual({ tokens: 17000, costUsd: 1.1 });
   });
 
@@ -145,14 +148,16 @@ describe('DashboardStore', () => {
     const files = store.getProjectFiles('p1');
     const productivity = store.getProductivityByHour();
 
-    expect(projected.currentMonthCost).toBeCloseTo(0.8);
+    expect(projected.currentMonthCost).toBeCloseTo(1.1);
     expect(streak.totalActiveDays).toBe(3);
     expect(efficiency.avgToolCallsPerSession).toBeCloseTo(1.0);
     expect(recap.sessions).toBe(2);
+    expect(recap.costUsd).toBeCloseTo(0.6);
     expect(recap.topProject).toBe('Alpha');
     expect(changes[0]?.type).toBe('modified');
     expect(projectStats.toolUsage[0].tool).toBe('Edit');
     expect(projectStats.recentToolCalls[0].tool).toBe('Edit');
+    expect(projectStats.weeklyStats.costUsd).toBeCloseTo(0.6);
     expect(files[0]).toMatchObject({ fullPath: '/app/index.ts', type: 'modified' });
     expect(productivity).toHaveLength(24);
   });

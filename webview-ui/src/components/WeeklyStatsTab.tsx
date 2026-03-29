@@ -24,8 +24,11 @@ export default function WeeklyStatsTab({ projectStats }: { projectStats?: Projec
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Sessions this week" value={String(sessions)} />
         <StatCard label="Tokens this week" value={formatTokens(tokens)} />
-        <StatCard label="Cost this week" value={`$${costUsd.toFixed(3)}`} />
+        <StatCard label="Est. cost this week" value={`$${costUsd.toFixed(3)}`} />
       </div>
+      <p className="text-xs opacity-45">
+        Costs are estimated from local Claude session logs and detected model pricing.
+      </p>
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Daily Breakdown</h2>

@@ -23,19 +23,19 @@ type TabGroup = 'activity' | 'knowledge' | 'workflow';
 type Tab = 'sessions' | 'claudemd' | 'tools' | 'mcp' | 'subagents' | 'files' | 'commands' | 'weekly' | 'memory' | 'plans' | 'todos' | 'commits' | 'settings';
 
 const TAB_META: Record<Tab, { label: string; description: string; group: TabGroup }> = {
-  sessions:  { label: 'Sessions', description: 'Browse runs and inspect full turn history.', group: 'activity' },
-  weekly:    { label: 'Trends', description: 'See the recent usage rhythm for this project.', group: 'activity' },
-  tools:     { label: 'Tool Usage', description: 'Review tool usage, recent calls, and patterns.', group: 'activity' },
+  sessions: { label: 'Sessions', description: 'Browse runs and inspect full turn history.', group: 'activity' },
+  weekly: { label: 'Trends', description: 'See the recent usage rhythm for this project.', group: 'activity' },
+  tools: { label: 'Tool Usage', description: 'Review tool usage, recent calls, and patterns.', group: 'activity' },
   subagents: { label: 'Subagents', description: 'Inspect Claude subagent definitions and delegated runs.', group: 'knowledge' },
-  files:     { label: 'Files', description: 'Track which files were touched and when.', group: 'activity' },
-  memory:    { label: 'Memory', description: 'Read saved memory notes and working agreements.', group: 'knowledge' },
-  claudemd:  { label: 'Claude Guide', description: 'Reference the project guidance Claude sees.', group: 'knowledge' },
-  commands:  { label: 'Commands', description: 'Open reusable custom slash commands for this project.', group: 'knowledge' },
-  mcp:       { label: 'MCP', description: 'Inspect configured MCP integrations and usage.', group: 'knowledge' },
-  plans:     { label: 'Plans', description: 'Review saved project plans and roadmap documents.', group: 'workflow' },
-  todos:     { label: 'Todos', description: 'Review final todo snapshots captured in sessions.', group: 'workflow' },
-  commits:   { label: 'Commits', description: 'Scan Claude co-authored commit history.', group: 'activity' },
-  settings:  { label: 'Automation', description: 'Check hooks and project-level configuration.', group: 'knowledge' },
+  files: { label: 'Files', description: 'Track which files were touched and when.', group: 'activity' },
+  memory: { label: 'Memory', description: 'Read saved memory notes and working agreements.', group: 'knowledge' },
+  claudemd: { label: 'Claude Guide', description: 'Reference the project guidance Claude sees.', group: 'knowledge' },
+  commands: { label: 'Commands', description: 'Open reusable custom slash commands for this project.', group: 'knowledge' },
+  mcp: { label: 'MCP', description: 'Inspect configured MCP integrations and usage.', group: 'knowledge' },
+  plans: { label: 'Plans', description: 'Review saved project plans and roadmap documents.', group: 'workflow' },
+  todos: { label: 'Todos', description: 'Review final todo snapshots captured in sessions.', group: 'workflow' },
+  commits: { label: 'Commits', description: 'Scan Claude co-authored commit history.', group: 'activity' },
+  settings: { label: 'Automation', description: 'Check hooks and project-level configuration.', group: 'knowledge' },
 };
 
 const TAB_GROUPS: Array<{ key: TabGroup; label: string; description: string; tabs: Tab[] }> = [
@@ -233,6 +233,9 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
         <StatCard label="Estimated cost" value={`$${project.totalCostUsd.toFixed(3)}`} />
         <StatCard label="Sessions" value={String(project.sessionCount)} />
       </div>
+      <p className="text-xs opacity-45">
+        Token usage comes from local Claude session logs. Costs are estimated from detected model pricing and may differ from Anthropic's actual billing.
+      </p>
 
       {/* Tab navigation */}
       <nav className="rounded-2xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
@@ -291,11 +294,10 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                   <button
                     key={s.id}
                     onClick={() => selectSession(s)}
-                    className={`w-full text-left rounded-xl p-3 transition-colors text-sm ${
-                      selectedSession?.id === s.id
+                    className={`w-full text-left rounded-xl p-3 transition-colors text-sm ${selectedSession?.id === s.id
                         ? 'bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]'
                         : 'hover:bg-[var(--vscode-list-hoverBackground)]'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-1 min-w-0">
                       {s.isActiveSession && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />}
@@ -713,8 +715,8 @@ function MiniStatCard({ label, value, tone = 'neutral' }: { label: string; value
   const toneClass = tone === 'success'
     ? 'text-green-300'
     : tone === 'warning'
-    ? 'text-yellow-300'
-    : 'text-[var(--vscode-editor-foreground)]';
+      ? 'text-yellow-300'
+      : 'text-[var(--vscode-editor-foreground)]';
 
   return (
     <div className="rounded-xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-input-background)] px-4 py-3">
@@ -737,19 +739,17 @@ function TabButton({ label, badge, active, onClick }: { label: string; badge: st
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-t-xl rounded-b-md px-3.5 py-2 text-sm border transition-colors whitespace-nowrap ${
-        active
+      className={`inline-flex items-center gap-2 rounded-t-xl rounded-b-md px-3.5 py-2 text-sm border transition-colors whitespace-nowrap ${active
           ? 'border-[var(--vscode-panel-border)] border-b-transparent bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] shadow-[inset_0_-2px_0_0_var(--vscode-button-background)]'
           : 'border-transparent bg-transparent text-[var(--vscode-editor-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)]'
-      }`}
+        }`}
     >
       <span>{label}</span>
       {badge && (
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-          active
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${active
             ? 'bg-black/20 text-current'
             : 'bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)]'
-        }`}>
+          }`}>
           {badge}
         </span>
       )}
@@ -771,11 +771,10 @@ function TabGroupButton({
   return (
     <button
       onClick={onClick}
-      className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${
-        active
+      className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${active
           ? 'border-[var(--vscode-button-background)] bg-[var(--vscode-button-background)]/10'
           : 'border-[var(--vscode-panel-border)] bg-[var(--vscode-input-background)] hover:bg-[var(--vscode-list-hoverBackground)]'
-      }`}
+        }`}
     >
       <div className="text-sm font-medium whitespace-nowrap">{label}</div>
       <div className="text-xs opacity-55 mt-1 truncate">{description}</div>
@@ -1111,11 +1110,10 @@ function MemoryEntryButton({ memory, selected, onSelect }: { memory: MemoryFile;
   return (
     <button
       onClick={onSelect}
-      className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
-        selected
+      className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${selected
           ? 'border-[var(--vscode-button-background)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]'
           : 'border-transparent hover:border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]'
-      }`}
+        }`}
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
@@ -1184,11 +1182,10 @@ function PlanReferenceList({
           <button
             key={file.fileName}
             onClick={() => onSelect(file.fileName)}
-            className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
-              selectedFileName === file.fileName
+            className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${selectedFileName === file.fileName
                 ? 'border-[var(--vscode-button-background)] bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]'
                 : 'border-transparent hover:border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)]'
-            }`}
+              }`}
           >
             <div className="text-sm font-medium">{file.name}</div>
             {file.description && (

@@ -279,7 +279,7 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
           {formatTokens(session.totalTokens)} tokens
         </span>
         <span>·</span>
-        <span>${totalCost.toFixed(4)}</span>
+        <span title="Estimated from local token usage, detected model, and static pricing data">est. ${totalCost.toFixed(4)}</span>
         {(session.cacheReadTokens ?? 0) > 0 && (
           <span className="opacity-50" title="Cache reads are billed at 0.1x and excluded from token count">
             +{formatTokens(session.cacheReadTokens)} cached

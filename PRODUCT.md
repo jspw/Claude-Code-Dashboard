@@ -2,7 +2,7 @@
 
 ## What It Is
 
-Claude Code Dashboard is a VS Code extension that turns the raw session data Claude Code writes to `~/.claude/` into a living analytics layer for developers. Every time you run a Claude session — asking it to fix a bug, build a feature, refactor a module — Claude records the conversation in a JSONL file on disk. The dashboard reads those files and surfaces the things developers actually want to know: what did I spend today, what sessions cost the most, which files does Claude keep touching, how efficient are my prompts, and is Claude running right now?
+Claude Code Dashboard is a VS Code extension that turns the raw session data Claude Code writes to `~/.claude/` into a living analytics layer for developers. Every time you run a Claude session — asking it to fix a bug, build a feature, refactor a module — Claude records the conversation in a JSONL file on disk. The dashboard reads those files and surfaces the things developers actually want to know: what is my token usage today, what is my estimated spend, which sessions seem most expensive, which files does Claude keep touching, how efficient are my prompts, and is Claude running right now?
 
 It is not a SaaS product. It does not send any data anywhere. It reads files that already exist on your machine and presents them inside VS Code.
 
@@ -25,16 +25,16 @@ The data to answer all of these questions is sitting in `~/.claude/projects/` �
 
 ## Who It Is For
 
-**Primary user:** A developer who uses Claude Code every day across multiple projects and wants visibility into their usage, costs, and patterns. They are comfortable with VS Code extensions and are not looking for a web dashboard — they want this information where they already work.
+**Primary user:** A developer who uses Claude Code every day across multiple projects and wants visibility into their usage, estimated costs, and patterns. They are comfortable with VS Code extensions and are not looking for a web dashboard — they want this information where they already work.
 
-**Secondary user:** A team lead or freelancer who bills clients by AI-assisted work and needs accurate records of which projects consumed what.
+**Secondary user:** A team lead or freelancer who wants project-level usage allocation for AI-assisted work and needs a fast local approximation of which projects consumed what. This is operational visibility, not billing-grade reporting.
 
 ---
 
 ## Core Value Propositions
 
 ### 1. Cost awareness in real time
-The status bar shows today's token count and dollar cost at a glance, updated whenever a session file changes. No waiting for a monthly bill. You know what you spent before you close your laptop.
+The status bar shows today's token count and estimated dollar cost at a glance, updated whenever a session file changes. No waiting for a monthly bill. You get a fast local approximation of spend before you close your laptop.
 
 ### 2. Session-level accountability
 Every session is a record: when it started, how long it ran, how many prompts it took, which files it touched, and exactly what the first prompt was. The session summary line (the first user prompt shown as a preview) answers "what was I doing in this session?" without having to open it.
@@ -53,7 +53,7 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 ## Feature Inventory
 
 ### Status Bar
-- Live token count and cost for today
+- Live token count and estimated cost for today
 - Session count indicator (pulses when a session is active)
 - Clicks open the full dashboard
 
@@ -65,16 +65,16 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 
 ### Dashboard — Overview Tab
 - Budget alert banner (yellow at 80%, red at 100%)
-- Weekly recap card: sessions, projects, tokens, cost, files modified, top project, streak
-- Stats strip: tokens today / cost today / tokens this week / cost this week
+- Weekly recap card: sessions, projects, tokens, estimated cost, files modified, top project, streak
+- Stats strip: tokens today / estimated cost today / tokens this week / estimated cost this week
 - Active project cards with live pulse animation
-- Filterable, sortable project list (filter by name; sort by last active, cost, or session count)
+- Filterable, sortable project list (filter by name; sort by last active, estimated cost, or session count)
 
 ### Dashboard — Charts Tab
 - Token usage over the last 30 days (line chart)
 - Token usage by project (bar chart)
-- Projected monthly cost with progress bar
-- Cost by project this month (horizontal bar chart)
+- Projected monthly estimated cost with progress bar
+- Estimated cost by project this month (horizontal bar chart)
 
 ### Dashboard — Search Tab
 - Full-text search across every user prompt ever written
@@ -92,7 +92,7 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 
 ### Project Detail View
 - Project header with tech stack badges, path, and live indicator
-- Stats: total tokens, total cost, session count
+- Stats: total tokens, estimated cost, session count
 - Sessions tab: chronological session list with:
   - Session summary line (first user prompt as italic preview)
   - Extended thinking badge (⚡) for sessions that used thinking mode
@@ -106,7 +106,7 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 
 ### Alert System
 - Monthly token budget: alert when monthly token count exceeds configured limit
-- Monthly cost budget: alert at 80% and 100% of configured USD amount
+- Monthly estimated cost budget: alert at 80% and 100% of configured USD amount
 - Weekly digest: Monday morning recap (sessions, projects, tokens, top project)
 - All alerts fire as VS Code notifications; max once per day to avoid spam
 
@@ -131,6 +131,17 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 | `<project>/CLAUDE.md` | Project instructions |
 
 The extension never writes to any of these files except `settings.json` (to inject hooks, only with user consent) and `.dashboard-events.jsonl` (created by the injected hooks).
+
+---
+
+## Token And Cost Semantics
+
+- Token counts come from Claude's local JSONL session logs.
+- Displayed `totalTokens` exclude cache-read tokens, because cache reads can dwarf the meaningful token count in long sessions.
+- Estimated cost is computed locally from parsed token usage, detected model family, and a static pricing table bundled with the extension.
+- Model detection is heuristic: `opus` maps to Opus pricing, `haiku` maps to Haiku pricing, and everything else falls back to Sonnet pricing.
+- Aggregate estimated cost includes subagent-attributed cost when Claude spawns subagents.
+- These numbers are helpful operational estimates, but they are not guaranteed to match Anthropic billing, invoices, or future price changes exactly.
 
 ---
 

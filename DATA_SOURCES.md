@@ -175,7 +175,7 @@ Expressed as a percentage and shown in green in the session detail bar. A high r
 
 ## 4. Cost Calculation
 
-Cost is calculated accurately using all 4 token types at their correct rates per model:
+Cost is estimated locally using all 4 token types, a bundled pricing table, and a heuristic model-family mapping. It is intended to be directionally useful inside the dashboard and may not exactly match Anthropic billing.
 
 ### Pricing rates (per 1M tokens)
 
@@ -207,10 +207,12 @@ Note: cache read is the dominant cost driver in long sessions, even at 0.1× the
 
 ### Model detection
 
-The model name is read from `message.model` on each assistant turn (e.g. `"claude-sonnet-4-6"`). We match it to a pricing tier:
+The model name is read from `message.model` on each assistant turn (e.g. `"claude-sonnet-4-6"`). We map it to a pricing tier heuristically:
 - Contains `"opus"` → claude-opus-4 rates
 - Contains `"haiku"` → claude-haiku-4 rates
 - Everything else → claude-sonnet-4 rates (default)
+
+This means unknown or future model names currently fall back to Sonnet pricing unless they contain `opus` or `haiku`.
 
 ---
 
@@ -375,19 +377,19 @@ All analytics are computed in-memory from the parsed session data. Nothing is st
 | Metric | How it's computed |
 |---|---|
 | **Tokens today** | Sum `totalTokens` for sessions where `startTime` > midnight today |
-| **Cost today** | Sum `costUsd` for sessions where `startTime` > midnight today |
-| **Usage over time** | Group sessions by calendar day, sum tokens and cost per day |
+| **Cost today** | Sum estimated session cost for sessions where `startTime` > midnight today, including attributed `subagentCostUsd` |
+| **Usage over time** | Group sessions by calendar day, sum tokens and estimated cost per day |
 | **Hot files** | Count occurrences of each path across all sessions' `filesModified` arrays, across all projects |
 | **Tool usage** | Count each `toolCall.name` across all turns in all sessions |
 | **Streak** | Build a set of unique calendar dates with any session activity, walk backwards from today |
 | **Efficiency — avg tokens/prompt** | `totalTokens / promptCount` across all sessions |
 | **Efficiency — first-turn resolution** | % of sessions where `promptCount === 1` |
-| **Projected monthly cost** | `(currentMonthCost / daysElapsed) × daysInMonth` |
+| **Projected monthly cost** | `(currentMonthCost / daysElapsed) × daysInMonth`, using estimated cost including attributed `subagentCostUsd` |
 | **Productivity by hour** | Group sessions by `new Date(startTime).getHours()`, average tool calls and files modified |
 | **Heatmap** | Group sessions by `[dayOfWeek, hour]`, sum tokens per cell |
 | **Prompt patterns** | Classify each user turn by keyword regex into: Fix/Bug, Explain, Refactor, Feature, Test, Other |
 | **Cache hit rate** | Per session: `cacheRead / (input + cacheCreation + cacheRead) × 100` |
-| **Monthly usage** | Sum `totalTokens` and `costUsd` (including `subagentCostUsd`) for sessions since the 1st of the current month |
+| **Monthly usage** | Sum `totalTokens` and estimated session cost (including `subagentCostUsd`) for sessions since the 1st of the current month |
 
 ### Per-project
 

@@ -512,6 +512,10 @@ export class DashboardStore extends EventEmitter {
     return this.subagentSessions.get(projectId) ?? [];
   }
 
+  private getSessionTotalCost(session: Session): number {
+    return session.costUsd + (session.subagentCostUsd ?? 0);
+  }
+
   getStats(): DashboardStats {
     const now = Date.now();
     const dayMs = 86_400_000;
@@ -528,8 +532,8 @@ export class DashboardStore extends EventEmitter {
       const sessions = this.getSessions(project.id);
       for (const session of sessions) {
         if (session.isActiveSession) { activeSessionCount++; }
-        if (session.startTime > now - dayMs) { tokensTodayTotal += session.totalTokens; costTodayUsd += session.costUsd; }
-        if (session.startTime > now - weekMs) { tokensWeekTotal += session.totalTokens; costWeekUsd += session.costUsd; }
+        if (session.startTime > now - dayMs) { tokensTodayTotal += session.totalTokens; costTodayUsd += this.getSessionTotalCost(session); }
+        if (session.startTime > now - weekMs) { tokensWeekTotal += session.totalTokens; costWeekUsd += this.getSessionTotalCost(session); }
       }
     }
 
@@ -560,7 +564,7 @@ export class DashboardStore extends EventEmitter {
         for (const session of sessions) {
           if (session.startTime >= dayStart && session.startTime < dayEnd) {
             tokens += session.totalTokens;
-            costUsd += session.costUsd;
+            costUsd += this.getSessionTotalCost(session);
           }
         }
       }
@@ -855,7 +859,7 @@ export class DashboardStore extends EventEmitter {
       for (const session of sessions) {
         if (session.startTime >= monthStart) {
           tokens += session.totalTokens;
-          costUsd += session.costUsd + (session.subagentCostUsd ?? 0);
+          costUsd += this.getSessionTotalCost(session);
         }
       }
     }
@@ -989,7 +993,7 @@ export class DashboardStore extends EventEmitter {
     for (const [, sessions] of this.sessions) {
       for (const session of sessions) {
         if (session.startTime >= monthStart) {
-          currentMonthCost += session.costUsd;
+          currentMonthCost += this.getSessionTotalCost(session);
         }
       }
     }
@@ -1116,7 +1120,7 @@ export class DashboardStore extends EventEmitter {
         if (session.startTime < weekAgo) { continue; }
         sessions++;
         tokens += session.totalTokens;
-        costUsd += session.costUsd;
+        costUsd += this.getSessionTotalCost(session);
         session.filesModified.forEach(f => filesModifiedSet.add(f));
         projectsInWeek.add(project.id);
 
@@ -1213,7 +1217,7 @@ export class DashboardStore extends EventEmitter {
       for (const s of sessions) {
         if (s.startTime >= dayStart && s.startTime < dayEnd) {
           tokens  += s.totalTokens;
-          costUsd += s.costUsd;
+          costUsd += this.getSessionTotalCost(s);
         }
       }
       usageOverTime.push({ date: dateStr, tokens, costUsd });
@@ -1299,7 +1303,7 @@ export class DashboardStore extends EventEmitter {
       for (const s of sessions) {
         if (s.startTime >= dayStart && s.startTime < dayEnd) {
           tokens += s.totalTokens;
-          costUsd += s.costUsd;
+          costUsd += this.getSessionTotalCost(s);
           sessionsCount++;
         }
       }
@@ -1308,7 +1312,7 @@ export class DashboardStore extends EventEmitter {
     const weeklyStats = {
       sessions: weeklySessions.length,
       tokens: weeklySessions.reduce((sum, s) => sum + s.totalTokens, 0),
-      costUsd: weeklySessions.reduce((sum, s) => sum + s.costUsd, 0),
+      costUsd: weeklySessions.reduce((sum, s) => sum + this.getSessionTotalCost(s), 0),
       dailyBreakdown: weeklyDailyBreakdown,
     };
 

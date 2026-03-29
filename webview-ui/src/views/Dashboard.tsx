@@ -120,10 +120,13 @@ export default function Dashboard({
               {formatTokens(stats?.tokensTodayTotal ?? 0)} today
             </span>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--vscode-input-background)] border border-[var(--vscode-panel-border)]">
-              ${((stats?.costTodayUsd ?? 0)).toFixed(3)}
+              est. ${((stats?.costTodayUsd ?? 0)).toFixed(3)}
             </span>
           </div>
         </div>
+        <p className="text-xs opacity-45 mt-3">
+          Token usage comes from local Claude session logs. Costs are estimated from detected model pricing and may differ from Anthropic's actual billing.
+        </p>
       </div>
 
       {/* Tab navigation */}
@@ -194,9 +197,9 @@ export default function Dashboard({
           {/* Stats strip */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Tokens today" value={formatTokens(stats?.tokensTodayTotal ?? 0)} />
-            <StatCard label="Cost today" value={`$${(stats?.costTodayUsd ?? 0).toFixed(3)}`} />
+            <StatCard label="Est. cost today" value={`$${(stats?.costTodayUsd ?? 0).toFixed(3)}`} />
             <StatCard label="Tokens this week" value={formatTokens(stats?.tokensWeekTotal ?? 0)} />
-            <StatCard label="Cost this week" value={`$${(stats?.costWeekUsd ?? 0).toFixed(2)}`} />
+            <StatCard label="Est. cost this week" value={`$${(stats?.costWeekUsd ?? 0).toFixed(2)}`} />
           </div>
 
           {/* Active sessions */}
