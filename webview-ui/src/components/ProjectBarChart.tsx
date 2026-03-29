@@ -14,7 +14,7 @@ interface Props {
   data: ProjectUsage[];
 }
 
-function formatTokens(n: number): string {
+export function formatProjectBarTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
   return String(n);
@@ -30,7 +30,7 @@ interface TooltipPayload {
   payload: ProjectUsage;
 }
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) {
+export function ProjectBarChartTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
   return (
@@ -42,7 +42,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
       fontSize: 12,
     }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{d.name}</div>
-      <div>{formatTokens(d.tokens)} tokens</div>
+      <div>{formatProjectBarTokens(d.tokens)} tokens</div>
       <div style={{ opacity: 0.6 }}>${d.costUsd.toFixed(4)}</div>
     </div>
   );
@@ -66,7 +66,7 @@ export default function ProjectBarChart({ data }: Props) {
           tick={{ fontSize: 10, opacity: 0.6 }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={formatTokens}
+          tickFormatter={formatProjectBarTokens}
         />
         <YAxis
           type="category"
@@ -76,7 +76,7 @@ export default function ProjectBarChart({ data }: Props) {
           tickLine={false}
           width={90}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<ProjectBarChartTooltip />} />
         <Bar dataKey="tokens" radius={[0, 3, 3, 0]}>
           {truncated.map((_, index) => (
             <Cell key={index} fill={BAR_COLORS[index % BAR_COLORS.length]} />

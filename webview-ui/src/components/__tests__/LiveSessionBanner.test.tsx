@@ -7,6 +7,8 @@ describe('LiveSessionBanner', () => {
   it('renders nothing for zero sessions and pluralizes otherwise', () => {
     const { rerender, container } = render(<LiveSessionBanner activeCount={0} />);
     expect(container).toBeEmptyDOMElement();
+    rerender(<LiveSessionBanner activeCount={1} />);
+    expect(screen.getByText('1 active session running')).toBeInTheDocument();
     rerender(<LiveSessionBanner activeCount={2} />);
     expect(screen.getByText('2 active sessions running')).toBeInTheDocument();
   });

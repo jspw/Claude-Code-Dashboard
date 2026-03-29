@@ -2,7 +2,7 @@ import React from 'react';
 import { vscode } from '../vscode';
 import { Project, DashboardStats } from '../types';
 
-function timeAgo(ts: number): string {
+export function sidebarTimeAgo(ts: number): string {
   if (!ts) { return 'never'; }
   const diff = Date.now() - ts;
   const h = Math.floor(diff / 3_600_000);
@@ -12,7 +12,7 @@ function timeAgo(ts: number): string {
   return `${d}d ago`;
 }
 
-function formatTokens(n: number): string {
+export function formatSidebarTokens(n: number): string {
   if (n >= 1_000_000) { return `${(n / 1_000_000).toFixed(1)}M`; }
   if (n >= 1_000) { return `${(n / 1_000).toFixed(1)}k`; }
   return String(n);
@@ -42,7 +42,7 @@ export default function Sidebar({ projects, stats, selectedProjectId = null }: P
           animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
           flexShrink: 0,
         }} />
-        <span>{stats?.activeSessionCount ?? 0} active &middot; {formatTokens(stats?.tokensTodayTotal ?? 0)} tokens today</span>
+        <span>{stats?.activeSessionCount ?? 0} active &middot; {formatSidebarTokens(stats?.tokensTodayTotal ?? 0)} tokens today</span>
       </div>
 
       {/* Open Dashboard button */}
@@ -191,7 +191,7 @@ function ProjectRow({ project: p, selected }: { project: Project; selected: bool
         </span>
       ) : (
         <span style={{ fontSize: '11px', opacity: 0.4, flexShrink: 0 }}>
-          {p.isActive ? 'live' : timeAgo(p.lastActive)}
+          {p.isActive ? 'live' : sidebarTimeAgo(p.lastActive)}
         </span>
       )}
     </button>

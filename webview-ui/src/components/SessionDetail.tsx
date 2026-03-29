@@ -12,9 +12,9 @@ type SystemEvent =
 
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
-function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
+export function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
 
-function parseSystemContent(content: string): SystemEvent | 'skip' | null {
+export function parseSystemContent(content: string): SystemEvent | 'skip' | null {
   const t = content.trim();
   if (/<local-command-caveat>/i.test(t) && !t.replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/gi, '').trim()) {
     return 'skip';
@@ -246,7 +246,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
 
 // ── SessionDetail ──────────────────────────────────────────────────────────────
 
-function modelLabel(model: string | null): string | null {
+export function modelLabel(model: string | null): string | null {
   if (!model) return null;
   if (model.includes('opus')) return 'Opus';
   if (model.includes('haiku')) return 'Haiku';
@@ -254,7 +254,7 @@ function modelLabel(model: string | null): string | null {
   return null;
 }
 
-function modelBadgeColor(model: string | null): string {
+export function modelBadgeColor(model: string | null): string {
   if (!model) return '';
   if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
   if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';

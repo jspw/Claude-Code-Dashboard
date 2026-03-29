@@ -28,7 +28,11 @@ interface TooltipPayload {
   payload: PatternCount;
 }
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) {
+export function getPatternCategoryColor(category: string): string {
+  return CATEGORY_COLORS[category] ?? '#6366f1';
+}
+
+export function PatternChartTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
   return (
@@ -67,10 +71,10 @@ export default function PatternChart({ data }: Props) {
           width={36}
           allowDecimals={false}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<PatternChartTooltip />} />
         <Bar dataKey="count" radius={[3, 3, 0, 0]}>
           {filtered.map((entry, index) => (
-            <Cell key={index} fill={CATEGORY_COLORS[entry.category] ?? '#6366f1'} />
+            <Cell key={index} fill={getPatternCategoryColor(entry.category)} />
           ))}
         </Bar>
       </BarChart>
