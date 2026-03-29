@@ -63,10 +63,10 @@ function timeAgo(ts: number): string {
   return `${d}d ago`;
 }
 
-const TAB_LABELS: { key: Tab; label: string }[] = [
-  { key: 'overview',  label: 'Overview' },
-  { key: 'charts',   label: 'Charts' },
-  { key: 'insights', label: 'Insights' },
+const TAB_LABELS: Array<{ key: Tab; label: string; description: string }> = [
+  { key: 'overview', label: 'Overview', description: 'Track active projects, weekly momentum, and recent portfolio activity.' },
+  { key: 'charts', label: 'Charts', description: 'Review usage and cost trends across the month.' },
+  { key: 'insights', label: 'Insights', description: 'Explore patterns, productivity, and hotspots across your work.' },
 ];
 
 type SortKey = 'lastActive' | 'cost' | 'sessions';
@@ -93,6 +93,7 @@ export default function Dashboard({
   const [projectSort, setProjectSort] = useState<SortKey>('lastActive');
 
   const active = projects.filter(p => p.isActive);
+  const activeTabMeta = TAB_LABELS.find(tab => tab.key === activeTab) ?? TAB_LABELS[0];
 
   const filteredProjects = projects
     .filter(p => !p.isActive)
@@ -105,29 +106,42 @@ export default function Dashboard({
     .slice(0, 20);
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold mb-1">Claude Code Dashboard</h1>
-        <p className="text-sm opacity-60">{stats?.totalProjects ?? 0} projects · {stats?.activeSessionCount ?? 0} active sessions</p>
+      <div className="rounded-2xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.18em] opacity-45">Workspace</div>
+            <h1 className="text-2xl font-bold mt-1">Claude Code Dashboard</h1>
+            <p className="text-sm opacity-60 mt-1">{stats?.totalProjects ?? 0} projects · {stats?.activeSessionCount ?? 0} active sessions</p>
+          </div>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)]">
+              {formatTokens(stats?.tokensTodayTotal ?? 0)} today
+            </span>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--vscode-input-background)] border border-[var(--vscode-panel-border)]">
+              ${((stats?.costTodayUsd ?? 0)).toFixed(3)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Tab navigation */}
-      <div className="flex gap-1 border-b border-[var(--vscode-panel-border)]">
-        {TAB_LABELS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === key
-                ? 'border-[var(--vscode-button-background)] text-[var(--vscode-button-background)]'
-                : 'border-transparent opacity-60 hover:opacity-100'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <nav className="rounded-2xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
+        <div className="px-4 py-4 border-b border-[var(--vscode-panel-border)]">
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            {TAB_LABELS.map(({ key, label }) => (
+              <DashboardTabButton
+                key={key}
+                label={label}
+                active={activeTab === key}
+                onClick={() => setActiveTab(key)}
+              />
+            ))}
+          </div>
+          <p className="text-sm opacity-60 mt-3 max-w-2xl">{activeTabMeta.description}</p>
+        </div>
+      </nav>
 
       {/* Overview tab */}
       {activeTab === 'overview' && (
@@ -187,20 +201,26 @@ export default function Dashboard({
 
           {/* Active sessions */}
           {active.length > 0 && (
-            <section>
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--vscode-textLink-foreground)] border-l-2 border-[var(--vscode-textLink-foreground)] pl-2 mb-3">Active Now</h2>
+            <DashboardSection
+              eyebrow="Overview"
+              title="Active Now"
+              detail="Projects with a currently running Claude session."
+            >
               <div className="grid gap-3 sm:grid-cols-2">
                 {active.map(p => (
                   <ActiveProjectCard key={p.id} project={p} />
                 ))}
               </div>
-            </section>
+            </DashboardSection>
           )}
 
           {/* All projects with filter/sort */}
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--vscode-textLink-foreground)] border-l-2 border-[var(--vscode-textLink-foreground)] pl-2">Projects</h2>
+          <DashboardSection
+            eyebrow="Library"
+            title="Projects"
+            detail="Browse recent repositories and jump into their detail views."
+          >
+            <div className="flex flex-wrap items-center gap-2 mb-4">
               <div className="ml-auto flex items-center gap-2">
                 <input
                   type="text"
@@ -226,38 +246,30 @@ export default function Dashboard({
                 : <div className="text-xs opacity-40 py-4 text-center">No projects match "{projectFilter}"</div>
               }
             </div>
-          </section>
+          </DashboardSection>
         </div>
       )}
 
       {/* Charts tab */}
       {activeTab === 'charts' && (
         <div className="space-y-6">
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Token Usage — Last 30 Days</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Charts" title="Token Usage — Last 30 Days">
               {usageOverTime && usageOverTime.length > 0
                 ? <UsageLineChart data={usageOverTime} />
                 : <div className="text-sm opacity-40 text-center py-8">No usage data available.</div>
               }
-            </div>
-          </section>
+          </DashboardSection>
 
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Token Usage by Project</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Charts" title="Token Usage by Project">
               {usageByProject && usageByProject.length > 0
                 ? <ProjectBarChart data={usageByProject} />
                 : <div className="text-sm opacity-40 text-center py-8">No project usage data available.</div>
               }
-            </div>
-          </section>
+          </DashboardSection>
 
           {/* Projected Monthly Cost */}
           {projectedCost && (
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Projected Monthly Cost</h2>
-              <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+            <DashboardSection eyebrow="Forecast" title="Projected Monthly Cost">
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <div className="text-xs opacity-50 mb-1">This month so far</div>
@@ -294,15 +306,13 @@ export default function Dashboard({
                     </div>
                   </div>
                 )}
-              </div>
-            </section>
+            </DashboardSection>
           )}
 
           {/* Cost by Project This Month */}
           {usageByProject && usageByProject.length > 0 && (
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Cost by Project This Month</h2>
-              <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 space-y-2">
+            <DashboardSection eyebrow="Forecast" title="Cost by Project This Month">
+              <div className="space-y-2">
                 {(() => {
                   const maxCost = Math.max(...usageByProject.map(p => p.costUsd), 0.0001);
                   return usageByProject.slice(0, 8).map(p => (
@@ -323,7 +333,7 @@ export default function Dashboard({
                   ));
                 })()}
               </div>
-            </section>
+            </DashboardSection>
           )}
         </div>
       )}
@@ -331,65 +341,46 @@ export default function Dashboard({
       {/* Insights tab */}
       {activeTab === 'insights' && (
         <div className="space-y-6">
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Prompt Categories</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Insights" title="Prompt Categories">
               {promptPatterns
                 ? <PatternChart data={promptPatterns} />
                 : <div className="text-sm opacity-40 text-center py-8">No prompt data yet.</div>
               }
-            </div>
-          </section>
+          </DashboardSection>
 
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Usage Heatmap (by Hour &amp; Day)</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Insights" title="Usage Heatmap (by Hour & Day)">
               {heatmapData && heatmapData.length > 0
                 ? <HeatmapGrid data={heatmapData} />
                 : <div className="text-sm opacity-40 text-center py-8">No heatmap data available.</div>
               }
-            </div>
-          </section>
+          </DashboardSection>
 
           {/* Efficiency Stats */}
           {efficiency && (
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Efficiency Stats</h2>
+            <DashboardSection eyebrow="Insights" title="Efficiency Stats">
               <EfficiencyCards data={efficiency} />
-            </section>
+            </DashboardSection>
           )}
 
           {/* Tool Usage */}
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Tool Usage</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Insights" title="Tool Usage">
               <ToolUsageBar data={toolUsage ?? []} />
-            </div>
-          </section>
+          </DashboardSection>
 
           {/* Productivity by Hour */}
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Productivity by Hour</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Insights" title="Productivity by Hour">
               <ProductivityChart data={productivityByHour ?? []} />
-            </div>
-          </section>
+          </DashboardSection>
 
           {/* Hot Files */}
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Hot Files</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Insights" title="Hot Files">
               <HotFilesList data={hotFiles ?? []} />
-            </div>
-          </section>
+          </DashboardSection>
 
           {/* Recent File Changes */}
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Recent File Changes (last 7 days)</h2>
-            <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+          <DashboardSection eyebrow="Insights" title="Recent File Changes (last 7 days)">
               <RecentChanges data={recentChanges ?? []} />
-            </div>
-          </section>
+          </DashboardSection>
         </div>
       )}
     </div>
@@ -398,9 +389,9 @@ export default function Dashboard({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
-      <div className="text-xs opacity-50 mb-1">{label}</div>
-      <div className="text-xl font-bold">{value}</div>
+    <div className="rounded-xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-input-background)] px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.16em] opacity-45">{label}</div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
     </div>
   );
 }
@@ -409,7 +400,7 @@ function ActiveProjectCard({ project }: { project: Project }) {
   return (
     <button
       onClick={() => vscode.postMessage({ type: 'openProject', projectId: project.id })}
-      className="text-left rounded-lg border border-green-500/40 bg-green-500/5 p-4 hover:bg-green-500/10 transition-colors w-full"
+      className="text-left rounded-xl border border-green-500/35 bg-green-500/5 p-4 hover:bg-green-500/10 transition-colors w-full"
     >
       <div className="flex items-center gap-2 mb-2">
         <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -429,12 +420,52 @@ function ProjectRow({ project }: { project: Project }) {
   return (
     <button
       onClick={() => vscode.postMessage({ type: 'openProject', projectId: project.id })}
-      className="flex items-center gap-3 w-full text-left rounded p-3 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors"
+      className="flex items-center gap-3 w-full text-left rounded-xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-input-background)] px-4 py-3 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors"
     >
       <span className="font-medium min-w-0 flex-1 truncate">{project.name}</span>
       <span className="text-xs opacity-50 shrink-0">{timeAgo(project.lastActive)}</span>
       <span className="text-xs opacity-50 shrink-0">{formatTokens(project.totalTokens)}</span>
       <span className="text-xs opacity-50 shrink-0">${project.totalCostUsd.toFixed(3)}</span>
     </button>
+  );
+}
+
+function DashboardTabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-t-xl rounded-b-md px-3.5 py-2 text-sm border transition-colors whitespace-nowrap ${
+        active
+          ? 'border-[var(--vscode-panel-border)] border-b-transparent bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] shadow-[inset_0_-2px_0_0_var(--vscode-button-background)]'
+          : 'border-transparent bg-transparent text-[var(--vscode-editor-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)]'
+      }`}
+    >
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function DashboardSection({
+  eyebrow,
+  title,
+  detail,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  detail?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
+      <div className="mb-4">
+        <div className="text-[11px] uppercase tracking-[0.18em] opacity-45">{eyebrow}</div>
+        <h2 className="text-xl font-semibold mt-1">{title}</h2>
+        {detail && (
+          <p className="text-sm opacity-60 mt-1 max-w-2xl">{detail}</p>
+        )}
+      </div>
+      {children}
+    </section>
   );
 }
