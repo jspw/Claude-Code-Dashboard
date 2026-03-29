@@ -23,6 +23,21 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+function modelLabel(model: string | null): string | null {
+  if (!model) return null;
+  if (model.includes('opus')) return 'Opus';
+  if (model.includes('haiku')) return 'Haiku';
+  if (model.includes('sonnet')) return 'Sonnet';
+  return null;
+}
+
+function modelBadgeColor(model: string | null): string {
+  if (!model) return '';
+  if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
+  if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';
+  return 'text-blue-400 bg-blue-500/15';
+}
+
 export default function SessionList({ sessions, selectedId, onSelect }: Props) {
   const sorted = [...sessions].sort((a, b) => b.startTime - a.startTime);
 
@@ -38,7 +53,14 @@ export default function SessionList({ sessions, selectedId, onSelect }: Props) {
               : 'hover:bg-[var(--vscode-list-hoverBackground)]'
           }`}
         >
-          <div className="font-medium">{new Date(s.startTime).toLocaleDateString()}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{new Date(s.startTime).toLocaleDateString()}</span>
+            {modelLabel(s.model) && (
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${modelBadgeColor(s.model)}`}>
+                {modelLabel(s.model)}
+              </span>
+            )}
+          </div>
           <div className="text-xs opacity-60">
             {formatDuration(s.durationMs)} · {formatTokens(s.totalTokens)} tokens · {s.promptCount} prompts
             {s.activityRatio !== null && s.activityRatio !== undefined && (

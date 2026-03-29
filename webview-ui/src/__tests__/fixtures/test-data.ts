@@ -32,6 +32,7 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     sessionSummary: 'Fix bug', hasThinking: false, thinkingTokens: 0,
     cacheHitRate: 76.9, subagentCostUsd: 0,
     idleTimeMs: null, activeTimeMs: null, activityRatio: null,
+    model: null,
     ...overrides,
   };
 }

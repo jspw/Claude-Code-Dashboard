@@ -20,9 +20,17 @@ interface TooltipPayload {
   color: string;
 }
 
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: number }) {
+export function formatProductivityHour(label?: number): string {
+  return label !== undefined ? `${String(label).padStart(2, '0')}:00` : '';
+}
+
+export function formatProductivityTick(value: number): string {
+  return `${String(value).padStart(2, '0')}h`;
+}
+
+export function ProductivityChartTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: number }) {
   if (!active || !payload || !payload.length) { return null; }
-  const hourStr = label !== undefined ? `${String(label).padStart(2, '0')}:00` : '';
+  const hourStr = formatProductivityHour(label);
   return (
     <div style={{
       background: 'var(--vscode-editor-background)',
@@ -65,7 +73,7 @@ export default function ProductivityChart({ data }: Props) {
           tick={{ fontSize: 10, opacity: 0.6 }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={(v: number) => `${String(v).padStart(2, '0')}h`}
+          tickFormatter={formatProductivityTick}
           interval={2}
         />
         <YAxis
@@ -75,7 +83,7 @@ export default function ProductivityChart({ data }: Props) {
           width={32}
           allowDecimals={false}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<ProductivityChartTooltip />} />
         <Legend wrapperStyle={{ fontSize: 11, opacity: 0.7 }} />
         <Bar dataKey="Sessions" fill="#6366f1" radius={[2, 2, 0, 0]} />
         <Bar dataKey="Avg Tool Calls" fill="#f59e0b" radius={[2, 2, 0, 0]} />

@@ -14,6 +14,8 @@ type ProjectStoreMock = {
   getProjectConfig: ReturnType<typeof vi.fn>;
   getProjectStats: ReturnType<typeof vi.fn>;
   getProjectFiles: ReturnType<typeof vi.fn>;
+  getProjectTodos: ReturnType<typeof vi.fn>;
+  getClaudeCommits: ReturnType<typeof vi.fn>;
 };
 type ProjectStatsLike = {
   toolUsage: unknown[];
@@ -55,7 +57,7 @@ describe('ProjectPanel', () => {
       getProject: vi.fn(() => ({ id: 'p1', name: 'Alpha' } as unknown as Project)),
       getSessions: vi.fn(() => sessions),
       getSubagentSessions: vi.fn(() => [{ id: 'sub1', turns: [{ id: 'st1' }], startTime: 1 }] as unknown as Session[]),
-      getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] } as ProjectConfig)),
+      getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [], plans: [], memory: { index: null, files: [] }, hooks: [] } as ProjectConfig)),
       getProjectStats: vi.fn(() => ({
         toolUsage: [],
         usageOverTime: [],
@@ -71,6 +73,8 @@ describe('ProjectPanel', () => {
         weeklyStats: { sessions: 0, tokens: 0, costUsd: 0, dailyBreakdown: [] },
       } as ProjectStatsLike)),
       getProjectFiles: vi.fn(() => []),
+      getProjectTodos: vi.fn(() => []),
+      getClaudeCommits: vi.fn(() => []),
     };
     vi.mocked(vscode.window.createWebviewPanel).mockImplementation(() => ({
       webview: {
@@ -111,7 +115,7 @@ describe('ProjectPanel', () => {
       getProject: vi.fn(() => undefined),
       getSessions: vi.fn(() => []),
       getSubagentSessions: vi.fn(() => []),
-      getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] } as ProjectConfig)),
+      getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [], plans: [], memory: { index: null, files: [] }, hooks: [] } as ProjectConfig)),
       getProjectStats: vi.fn(() => ({
         toolUsage: [],
         usageOverTime: [],
@@ -127,6 +131,8 @@ describe('ProjectPanel', () => {
         weeklyStats: { sessions: 0, tokens: 0, costUsd: 0, dailyBreakdown: [] },
       } as ProjectStatsLike)),
       getProjectFiles: vi.fn(() => []),
+      getProjectTodos: vi.fn(() => []),
+      getClaudeCommits: vi.fn(() => []),
     };
 
     vi.mocked(vscode.window.createWebviewPanel).mockImplementation(() => ({

@@ -60,6 +60,7 @@ describe('SessionParser', () => {
     expect(result?.sessionSummary).toBe('Hello');
     expect(result?.isActiveSession).toBe(false);
     expect(result?.endTime).toBeGreaterThan(0);
+    expect(result?.model).toBe('claude-sonnet-4');
   });
 
   it('extracts array content, strips command messages, and counts prompts', () => {
@@ -105,8 +106,10 @@ describe('SessionParser', () => {
     expect(cacheResult?.cacheReadTokens).toBe(15000);
     expect(cacheResult?.cacheHitRate).toBe(83.3);
     expect(cacheResult?.costUsd).toBeGreaterThan(0);
+    expect(cacheResult?.model).toBe('claude-sonnet-4');
     expect(thinkingResult?.hasThinking).toBe(true);
     expect(thinkingResult?.thinkingTokens).toBe(5000);
+    expect(thinkingResult?.model).toBe('claude-opus-4');
   });
 
   it('computes idle, active, and duration metrics', () => {

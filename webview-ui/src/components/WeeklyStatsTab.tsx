@@ -12,6 +12,10 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+export function formatWeeklyTooltipValue(value: number, name: string): [string, string] {
+  return [name === 'tokens' ? formatTokens(value) : `$${value.toFixed(4)}`, name];
+}
+
 export default function WeeklyStatsTab({ projectStats }: { projectStats?: ProjectStats }) {
   if (!projectStats?.weeklyStats) {
     return <div className="text-sm opacity-40 text-center py-12">No data available.</div>;
@@ -24,8 +28,11 @@ export default function WeeklyStatsTab({ projectStats }: { projectStats?: Projec
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Sessions this week" value={String(sessions)} />
         <StatCard label="Tokens this week" value={formatTokens(tokens)} />
-        <StatCard label="Cost this week" value={`$${costUsd.toFixed(3)}`} />
+        <StatCard label="Est. cost this week" value={`$${costUsd.toFixed(3)}`} />
       </div>
+      <p className="text-xs opacity-45">
+        Costs are estimated from local Claude session logs and detected model pricing.
+      </p>
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Daily Breakdown</h2>
@@ -39,7 +46,7 @@ export default function WeeklyStatsTab({ projectStats }: { projectStats?: Projec
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{ background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-panel-border)', borderRadius: 4, fontSize: 12 }}
-                  formatter={(v: number, name: string) => [name === 'tokens' ? formatTokens(v) : `$${v.toFixed(4)}`, name]}
+                  formatter={formatWeeklyTooltipValue}
                 />
                 <Bar dataKey="tokens" fill="var(--vscode-button-background)" radius={[2, 2, 0, 0]} opacity={0.8} />
               </BarChart>

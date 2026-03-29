@@ -154,13 +154,16 @@ Token accounting rules:
 
 - `totalTokens = inputTokens + cacheCreationTokens + outputTokens`
 - `cacheReadTokens` are tracked separately and excluded from `totalTokens`
-- `costUsd` uses input, output, cache write, and cache read rates
+- `costUsd` is a local estimate using input, output, cache write, and cache read rates
+- aggregate estimated cost also includes `subagentCostUsd` where applicable
 
 Model pricing is inferred by substring matching in the assistant model name:
 
 - `opus` → `claude-opus-4`
 - `haiku` → `claude-haiku-4`
 - otherwise → `claude-sonnet-4`
+
+This is a heuristic mapping, so unknown or future model names currently fall back to Sonnet pricing.
 
 ### `SettingsParser`
 

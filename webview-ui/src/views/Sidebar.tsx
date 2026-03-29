@@ -2,7 +2,7 @@ import React from 'react';
 import { vscode } from '../vscode';
 import { Project, DashboardStats } from '../types';
 
-function timeAgo(ts: number): string {
+export function sidebarTimeAgo(ts: number): string {
   if (!ts) { return 'never'; }
   const diff = Date.now() - ts;
   const h = Math.floor(diff / 3_600_000);
@@ -12,15 +12,15 @@ function timeAgo(ts: number): string {
   return `${d}d ago`;
 }
 
-function formatTokens(n: number): string {
+export function formatSidebarTokens(n: number): string {
   if (n >= 1_000_000) { return `${(n / 1_000_000).toFixed(1)}M`; }
   if (n >= 1_000) { return `${(n / 1_000).toFixed(1)}k`; }
   return String(n);
 }
 
-interface Props { projects: Project[]; stats: DashboardStats; }
+interface Props { projects: Project[]; stats: DashboardStats; selectedProjectId?: string | null; }
 
-export default function Sidebar({ projects, stats }: Props) {
+export default function Sidebar({ projects, stats, selectedProjectId = null }: Props) {
   const unique = Array.from(new Map(projects.map(p => [p.id, p])).values());
   const active = unique.filter(p => p.isActive);
   const recent = unique.filter(p => !p.isActive && Date.now() - p.lastActive < 7 * 86_400_000);
@@ -42,7 +42,7 @@ export default function Sidebar({ projects, stats }: Props) {
           animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
           flexShrink: 0,
         }} />
-        <span>{stats?.activeSessionCount ?? 0} active &middot; {formatTokens(stats?.tokensTodayTotal ?? 0)} tokens today</span>
+        <span>{stats?.activeSessionCount ?? 0} active &middot; {formatSidebarTokens(stats?.tokensTodayTotal ?? 0)} tokens today</span>
       </div>
 
       {/* Open Dashboard button */}
@@ -70,13 +70,13 @@ export default function Sidebar({ projects, stats }: Props) {
       {/* Project list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <Section label="Active" count={active.length} accent="#4ade80" show={active.length > 0}>
-          {active.map(p => <ProjectRow key={p.id} project={p} />)}
+          {active.map(p => <ProjectRow key={p.id} project={p} selected={selectedProjectId === p.id} />)}
         </Section>
         <Section label="Recent" count={recent.length} accent="var(--vscode-textLink-foreground)" show={recent.length > 0}>
-          {recent.map(p => <ProjectRow key={p.id} project={p} />)}
+          {recent.map(p => <ProjectRow key={p.id} project={p} selected={selectedProjectId === p.id} />)}
         </Section>
         <Section label="Older" count={rest.length} accent="var(--vscode-descriptionForeground)" show={rest.length > 0}>
-          {rest.map(p => <ProjectRow key={p.id} project={p} />)}
+          {rest.map(p => <ProjectRow key={p.id} project={p} selected={selectedProjectId === p.id} />)}
         </Section>
       </div>
 
@@ -130,19 +130,35 @@ function Section({ label, count, accent, show, children }: {
   );
 }
 
-function ProjectRow({ project: p }: { project: Project }) {
+function ProjectRow({ project: p, selected }: { project: Project; selected: boolean }) {
   const [hovered, setHovered] = React.useState(false);
   return (
-    <div
+    <button
+      type="button"
       onClick={() => vscode.postMessage({ type: 'openProject', projectId: p.id })}
+      aria-current={selected ? 'page' : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: '8px',
         padding: '5px 12px',
         cursor: 'pointer',
-        background: hovered ? 'var(--vscode-list-hoverBackground)' : 'transparent',
-        transition: 'background 0.1s',
+        background: selected
+          ? 'var(--vscode-list-activeSelectionBackground)'
+          : hovered
+          ? 'var(--vscode-list-hoverBackground)'
+          : 'transparent',
+        color: selected
+          ? 'var(--vscode-list-activeSelectionForeground)'
+          : 'var(--vscode-foreground)',
+        borderLeft: selected ? '2px solid var(--vscode-textLink-foreground)' : '2px solid transparent',
+        paddingLeft: '10px',
+        transition: 'background 0.1s, border-color 0.1s',
+        width: '100%',
+        borderTop: 'none',
+        borderRight: 'none',
+        borderBottom: 'none',
+        textAlign: 'left',
       }}
     >
       {p.isActive ? (
@@ -160,9 +176,24 @@ function ProjectRow({ project: p }: { project: Project }) {
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {p.name}
       </span>
-      <span style={{ fontSize: '11px', opacity: 0.4, flexShrink: 0 }}>
-        {p.isActive ? 'live' : timeAgo(p.lastActive)}
-      </span>
-    </div>
+      {selected ? (
+        <span style={{
+          fontSize: '10px',
+          lineHeight: 1,
+          padding: '3px 6px',
+          borderRadius: '999px',
+          background: 'color-mix(in srgb, var(--vscode-textLink-foreground) 18%, transparent)',
+          color: 'inherit',
+          opacity: 0.9,
+          flexShrink: 0,
+        }}>
+          open
+        </span>
+      ) : (
+        <span style={{ fontSize: '11px', opacity: 0.4, flexShrink: 0 }}>
+          {p.isActive ? 'live' : sidebarTimeAgo(p.lastActive)}
+        </span>
+      )}
+    </button>
   );
 }

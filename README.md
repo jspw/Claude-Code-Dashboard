@@ -1,6 +1,6 @@
 # Claude Code Dashboard
 
-A VS Code extension that shows you exactly what Claude is doing — tokens, costs, sessions, and insights across all your projects, right inside VS Code.
+A VS Code extension that shows you what Claude is doing on your machine — token usage, estimated costs, sessions, and insights across all your projects, right inside VS Code.
 
 **No API key required. No data leaves your machine.**
 
@@ -14,10 +14,10 @@ A VS Code extension that shows you exactly what Claude is doing — tokens, cost
 ## Screenshots
 
 ![Dashboard Overview](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/dashboard.png)
-*Main dashboard — projects, stats, weekly recap, and cost overview*
+*Main dashboard — projects, stats, weekly recap, and estimated cost overview*
 
 ![Dashboard Charts](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/dashboard-chart.png)
-*Charts tab — 30-day token trend, usage by project, projected monthly cost*
+*Charts tab — 30-day token trend, usage by project, projected monthly estimated cost*
 
 ![Dashboard Insights](https://raw.githubusercontent.com/jspw/Claude-Code-Dashboard/main/images/screenshots/dashbpard-insights.png)
 *Insights tab — heatmap, tool usage, productivity by hour, hot files*
@@ -52,12 +52,20 @@ Search for **Claude Code Dashboard** in the VS Code Extensions panel, or install
 
 | Tab | What you see |
 |---|---|
-| **Overview** | Weekly recap, today's tokens & cost, active sessions, full project list |
-| **Charts** | 30-day token trend, usage by project, projected monthly cost |
+| **Overview** | Weekly recap, today's tokens & estimated cost, active sessions, full project list |
+| **Charts** | 30-day token trend, usage by project, projected monthly estimated cost |
 | **Search** | Full-text search across every prompt you've ever sent to Claude |
 | **Insights** | Usage heatmap, tool breakdown, productivity by hour, hot files |
 
-**Project detail view** — click any project to see its full session history, turn-by-turn conversation, token breakdown, files touched, CLAUDE.md, and MCP servers. Export to JSON or CSV any time.
+**Project detail view** — click any project to see its full session history, turn-by-turn conversation, token breakdown, estimated cost, files touched, CLAUDE.md, and MCP servers. Export to JSON or CSV any time.
+
+## Token and cost notes
+
+- Token counts come from local Claude session logs in `~/.claude/projects/`.
+- Displayed `totalTokens` exclude cache-read tokens, which Claude may reuse heavily across long sessions.
+- Cost is a local estimate based on detected model family, a static pricing table, and parsed token usage.
+- Aggregate cost views include subagent-attributed cost when Claude spawns subagents.
+- Estimated cost may differ from Anthropic billing, invoices, or future pricing changes.
 
 ---
 
@@ -68,7 +76,7 @@ Search for **Claude Code Dashboard** in VS Code settings (`Cmd+,` / `Ctrl+,`).
 | Setting | Default | Description |
 |---|---|---|
 | `claudeDashboard.monthlyTokenBudget` | `0` | Monthly token cap. Set to `0` to disable. |
-| `claudeDashboard.monthlyBudgetUsd` | `0` | Monthly cost cap in USD. Alerts at 80% and 100%. Set to `0` to disable. |
+| `claudeDashboard.monthlyBudgetUsd` | `0` | Monthly estimated cost cap in USD. Alerts at 80% and 100%. Set to `0` to disable. |
 
 ---
 
@@ -81,7 +89,7 @@ Search for **Claude Code Dashboard** in VS Code settings (`Cmd+,` / `Ctrl+,`).
 — Confirm hooks were configured at first run. Check `~/.claude/settings.json` for entries referencing `.dashboard-events.jsonl`. The file watcher fallback still updates within ~300ms.
 
 **Cost numbers look off**
-— Costs are estimated from Anthropic's published per-model token rates. Cache read tokens are tracked separately and excluded from `totalTokens` (they bill at ~10% of regular input tokens).
+— Cost is estimated locally from parsed token usage, detected model family, and a static pricing table. Cache read tokens are tracked separately and excluded from `totalTokens`, but still contribute to estimated cost.
 
 **Corrupted `settings.json` after hook injection**
 — Restore the backup: `cp ~/.claude/settings.json.bak ~/.claude/settings.json`

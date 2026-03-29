@@ -35,9 +35,11 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     sidebarDisposable,
     vscode.commands.registerCommand('claudeDashboard.openDashboard', () => {
+      sidebarProvider.clearSelectedProject();
       DashboardPanel.createOrShow(context, store);
     }),
     vscode.commands.registerCommand('claudeDashboard.openProject', (projectId: string) => {
+      sidebarProvider.setSelectedProject(projectId);
       ProjectPanel.createOrShow(context, store, projectId);
     }),
     vscode.commands.registerCommand('claudeDashboard.refresh', () => {

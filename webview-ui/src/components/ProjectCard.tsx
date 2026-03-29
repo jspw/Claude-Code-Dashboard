@@ -6,13 +6,13 @@ interface Props {
   project: Project;
 }
 
-function formatTokens(n: number): string {
+export function formatProjectCardTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 
-function timeAgo(ts: number): string {
+export function projectCardTimeAgo(ts: number): string {
   if (!ts) return 'never';
   const diff = Date.now() - ts;
   const h = Math.floor(diff / 3_600_000);
@@ -35,9 +35,9 @@ export default function ProjectCard({ project }: Props) {
       </div>
       <div className="text-xs opacity-60 truncate mb-2">{project.path}</div>
       <div className="flex gap-3 text-xs opacity-50">
-        <span>{formatTokens(project.totalTokens)} tokens</span>
+        <span>{formatProjectCardTokens(project.totalTokens)} tokens</span>
         <span>{project.sessionCount} sessions</span>
-        <span className="ml-auto">{timeAgo(project.lastActive)}</span>
+        <span className="ml-auto">{projectCardTimeAgo(project.lastActive)}</span>
       </div>
     </button>
   );

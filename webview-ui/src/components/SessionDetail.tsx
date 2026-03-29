@@ -12,9 +12,9 @@ type SystemEvent =
 
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
-function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
+export function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
 
-function parseSystemContent(content: string): SystemEvent | 'skip' | null {
+export function parseSystemContent(content: string): SystemEvent | 'skip' | null {
   const t = content.trim();
   if (/<local-command-caveat>/i.test(t) && !t.replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/gi, '').trim()) {
     return 'skip';
@@ -266,6 +266,21 @@ function TurnBlock({ turn }: { turn: Turn }) {
 
 // ── SessionDetail ──────────────────────────────────────────────────────────────
 
+export function modelLabel(model: string | null): string | null {
+  if (!model) return null;
+  if (model.includes('opus')) return 'Opus';
+  if (model.includes('haiku')) return 'Haiku';
+  if (model.includes('sonnet')) return 'Sonnet';
+  return null;
+}
+
+export function modelBadgeColor(model: string | null): string {
+  if (!model) return '';
+  if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
+  if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';
+  return 'text-blue-400 bg-blue-500/15';
+}
+
 export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
   const totalCost = session.costUsd + (session.subagentCostUsd ?? 0);
   const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
@@ -308,6 +323,11 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
         </button>
         <span>·</span>
         <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
+        {modelLabel(session.model) && (
+          <span className={`font-semibold px-1.5 py-0.5 rounded opacity-100 ${modelBadgeColor(session.model)}`}>
+            {modelLabel(session.model)}
+          </span>
+        )}
         <span>·</span>
         <span>{formatDuration(session.durationMs)}</span>
         <span>·</span>
@@ -315,7 +335,7 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
           {formatTokens(session.totalTokens)} tokens
         </span>
         <span>·</span>
-        <span>${totalCost.toFixed(4)}</span>
+        <span title="Estimated from local token usage, detected model, and static pricing data">est. ${totalCost.toFixed(4)}</span>
         {(session.cacheReadTokens ?? 0) > 0 && (
           <span className="opacity-50" title="Cache reads are billed at 0.1x and excluded from token count">
             +{formatTokens(session.cacheReadTokens)} cached

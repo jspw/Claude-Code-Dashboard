@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '../../__tests__/helpers/render-helpers';
 import { CommandBlock, MarkdownView } from '../MarkdownView';
 
@@ -21,5 +21,13 @@ describe('MarkdownView', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(screen.getByText('Deploy')).toBeInTheDocument();
     expect(screen.getByText('now')).toBeInTheDocument();
+  });
+
+  it('renders markdown links and forwards link clicks', () => {
+    const onLinkClick = vi.fn();
+    render(<MarkdownView content={'See [Working Agreements](working-agreements.md)'} onLinkClick={onLinkClick} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Working Agreements' }));
+    expect(onLinkClick).toHaveBeenCalledWith('working-agreements.md');
   });
 });
