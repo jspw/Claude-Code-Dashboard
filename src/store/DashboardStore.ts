@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execSync } from 'child_process';
 import { EventEmitter } from 'events';
 import { SessionParser } from '../parsers/SessionParser';
 import { SettingsParser } from '../parsers/SettingsParser';
@@ -108,6 +109,7 @@ export interface Session {
   idleTimeMs: number | null;      // sum of gaps >5min between assistant→user turns
   activeTimeMs: number | null;    // durationMs - idleTimeMs
   activityRatio: number | null;   // activeTimeMs / durationMs * 100
+  model: string | null;           // detected model (e.g. 'claude-opus-4', 'claude-sonnet-4')
 }
 
 export interface Turn {
@@ -161,11 +163,57 @@ export interface McpServer {
   toolCallCount: number;   // total calls across all project sessions (0 if unused)
 }
 
+export interface MemoryFile {
+  fileName: string;
+  name: string;
+  description: string;
+  type: string;
+  content: string;
+}
+
+export interface ProjectMemory {
+  index: string | null;
+  files: MemoryFile[];
+}
+
+export interface PlanFile {
+  fileName: string;
+  name: string;
+  description: string;
+  content: string;
+}
+
+export interface ClaudeCommit {
+  hash: string;
+  shortHash: string;
+  author: string;
+  date: number;        // unix timestamp ms
+  subject: string;
+  filesChanged: number;
+}
+
+export interface SessionTodoSnapshot {
+  sessionId: string;
+  sessionDate: number;
+  sessionSummary: string | null;
+  todos: { content: string; status: string }[];
+  timestamp: number;
+}
+
+export interface HookConfig {
+  event: string;           // e.g. 'PostToolUse', 'PreToolUse', 'Stop'
+  matcher?: string;        // optional tool name matcher
+  command: string;         // shell command to run
+}
+
 export interface ProjectConfig {
   claudeMd: string | null;
   mcpServers: Record<string, McpServer>;
   projectSettings: Record<string, unknown>;
   commands: { name: string; content: string }[];
+  plans: PlanFile[];
+  memory: ProjectMemory;
+  hooks: HookConfig[];
 }
 
 const CACHE_VERSION = 2;
@@ -631,7 +679,7 @@ export class DashboardStore extends EventEmitter {
   getProjectConfig(projectId: string): ProjectConfig {
     const project = this.projects.get(projectId);
     if (!project) {
-      return { claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] };
+      return { claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [], plans: [], memory: { index: null, files: [] }, hooks: [] };
     }
 
     const claudeMd = this.settingsParser.readClaudeMd(project.path);
@@ -675,13 +723,121 @@ export class DashboardStore extends EventEmitter {
     }
 
     const commands = this.settingsParser.readProjectCommands(project.path);
+    const plans = this.settingsParser.readProjectPlans(project.path);
+    const memory = this.settingsParser.readProjectMemory(this.claudeDir, projectId);
+
+    // Extract hooks from global and project settings
+    const hooks: HookConfig[] = [];
+    const rawGlobalHooks = (globalSettings.hooks ?? {}) as Record<string, unknown[]>;
+    const rawProjectHooks = (projectSettings.hooks ?? {}) as Record<string, unknown[]>;
+    const mergedHooks = { ...rawGlobalHooks, ...rawProjectHooks };
+    for (const [event, entries] of Object.entries(mergedHooks)) {
+      if (!Array.isArray(entries)) { continue; }
+      for (const entry of entries) {
+        const e = entry as Record<string, unknown>;
+        if (typeof e.command === 'string') {
+          hooks.push({
+            event,
+            matcher: typeof e.matcher === 'string' ? e.matcher : undefined,
+            command: e.command,
+          });
+        }
+      }
+    }
 
     return {
       claudeMd,
       mcpServers,
       projectSettings: projectSettings as Record<string, unknown>,
       commands,
+      plans,
+      memory,
+      hooks,
     };
+  }
+
+  getProjectTodos(projectId: string): SessionTodoSnapshot[] {
+    const sessions = this.getSessions(projectId);
+    const results: SessionTodoSnapshot[] = [];
+
+    for (const session of sessions) {
+      // Find the last TodoWrite call in this session to get final state
+      let lastTodoCall: ToolCall | null = null;
+      let lastTodoTimestamp = 0;
+      for (const turn of session.turns) {
+        for (const tc of turn.toolCalls) {
+          if (tc.name === 'TodoWrite' && tc.input?.todos) {
+            lastTodoCall = tc;
+            lastTodoTimestamp = turn.timestamp;
+          }
+        }
+      }
+      if (lastTodoCall && Array.isArray(lastTodoCall.input.todos)) {
+        const todos = (lastTodoCall.input.todos as Array<{ content?: string; status?: string; activeForm?: string }>)
+          .map(t => ({
+            content: (t.content as string) ?? '',
+            status: (t.status as string) ?? 'pending',
+          }));
+        results.push({
+          sessionId: session.id,
+          sessionDate: session.startTime,
+          sessionSummary: session.sessionSummary,
+          todos,
+          timestamp: lastTodoTimestamp,
+        });
+      }
+    }
+
+    results.sort((a, b) => b.timestamp - a.timestamp);
+    return results;
+  }
+
+  getClaudeCommits(projectId: string): ClaudeCommit[] {
+    const project = this.projects.get(projectId);
+    if (!project) { return []; }
+
+    try {
+      // Use git log with --grep to find commits co-authored by Claude
+      const raw = execSync(
+        'git log --all --grep="Co-Authored-By:.*Claude" --format="%H|%an|%at|%s" --shortstat -100',
+        { cwd: project.path, timeout: 5000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+
+      const commits: ClaudeCommit[] = [];
+      const lines = raw.trim().split('\n').filter(Boolean);
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.includes('|')) { continue; }
+        const [hash, author, atStr, ...subjectParts] = line.split('|');
+        const subject = subjectParts.join('|');
+
+        // Next line might be the --shortstat line
+        let filesChanged = 0;
+        if (i + 1 < lines.length) {
+          const statLine = lines[i + 1];
+          const filesMatch = statLine.match(/(\d+) file/);
+          if (filesMatch) {
+            filesChanged = parseInt(filesMatch[1], 10);
+            i++; // skip the stat line
+          }
+        }
+
+        commits.push({
+          hash,
+          shortHash: hash.slice(0, 8),
+          author,
+          date: parseInt(atStr, 10) * 1000,
+          subject,
+          filesChanged,
+        });
+      }
+
+      return commits;
+    } catch {
+      // Not a git repo or git not available
+      return [];
+    }
   }
 
   getMonthlyTokens(): number {

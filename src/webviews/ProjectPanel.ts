@@ -77,6 +77,8 @@ export class ProjectPanel {
       config: store.getProjectConfig(projectId),
       projectStats: store.getProjectStats(projectId),
       projectFiles: store.getProjectFiles(projectId),
+      projectTodos: store.getProjectTodos(projectId),
+      claudeCommits: store.getClaudeCommits(projectId),
     };
   }
 }

@@ -58,6 +58,7 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     idleTimeMs: null,
     activeTimeMs: null,
     activityRatio: null,
+    model: null,
     ...overrides,
   };
 }

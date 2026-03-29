@@ -104,7 +104,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 | View | File | Description |
 |---|---|---|
 | Dashboard | `views/Dashboard.tsx` | 3 tabs: Overview (recap, stats, projects), Charts (usage, cost), Insights (heatmap, efficiency, tools, hot files) |
-| ProjectDetail | `views/ProjectDetail.tsx` | 8 tabs: Sessions, Weekly, CLAUDE.md, Commands, Tools, MCP Servers, Subagents, Files |
+| ProjectDetail | `views/ProjectDetail.tsx` | 12 tabs: Sessions, Weekly, CLAUDE.md, Commands, Tools, MCP Servers, Subagents, Files, Memory, Todos, Commits, Settings |
 | Sidebar | `views/Sidebar.tsx` | Compact project list grouped by Active/Recent/Older with stats |
 
 **Components (all in `components/`):**
@@ -149,12 +149,16 @@ Session turns are **lazy-loaded**: initial state ships sessions with `turns: []`
 ### Key Data Types (in `webview-ui/src/types.ts`)
 
 - **Project** — `{ id, name, path, lastActive, isActive, sessionCount, totalTokens, totalCostUsd, techStack[] }`
-- **Session** — `{ id, projectId, parentSessionId, startTime, endTime, durationMs, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens, costUsd, promptCount, toolCallCount, filesModified[], filesCreated[], turns[], sessionSummary, hasThinking, thinkingTokens, cacheHitRate, subagentCostUsd, idleTimeMs, activeTimeMs, activityRatio }`
+- **Session** — `{ id, projectId, parentSessionId, startTime, endTime, durationMs, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens, costUsd, promptCount, toolCallCount, filesModified[], filesCreated[], turns[], sessionSummary, hasThinking, thinkingTokens, cacheHitRate, subagentCostUsd, idleTimeMs, activeTimeMs, activityRatio, model }`
 - **Turn** — `{ id, role, content, inputTokens, outputTokens, toolCalls[], timestamp }`
 - **ToolCall** — `{ id, name, input, output?, mcpServer? }`
-- **ProjectConfig** — `{ claudeMd, mcpServers, projectSettings, commands[] }`
+- **ProjectConfig** — `{ claudeMd, mcpServers, projectSettings, commands[], memory, hooks[] }`
 - **ProjectStats** — `{ usageOverTime[], toolUsage[], promptPatterns[], efficiency, recentToolCalls[], weeklyStats }`
 - **DashboardStats** — `{ totalProjects, activeSessionCount, tokensTodayTotal, costTodayUsd, tokensWeekTotal, costWeekUsd }`
+- **ProjectMemory** — `{ index, files: MemoryFile[] }` where `MemoryFile` = `{ name, description, type, content }`
+- **SessionTodoSnapshot** — `{ sessionId, sessionDate, sessionSummary, todos: { content, status }[], timestamp }`
+- **ClaudeCommit** — `{ hash, shortHash, author, date, subject, filesChanged }`
+- **HookConfig** — `{ event, matcher?, command }`
 
 Other types: `DailyUsage`, `ProjectUsage`, `HeatmapCell`, `PatternCount`, `ToolUsageStat`, `HotFile`, `ProjectedCost`, `StreakData`, `EfficiencyStats`, `WeeklyRecap`, `RecentFileChange`, `ProductivityHour`, `BudgetStatus`, `ProjectFile`, `ProjectToolCall`, `WeeklyProjectStats`, `McpServer`, `PromptSearchResult`
 
@@ -190,12 +194,8 @@ Other types: `DailyUsage`, `ProjectUsage`, `HeatmapCell`, `PatternCount`, `ToolU
 ### Not Yet Implemented
 
 These Claude Code features are **not captured or displayed** by the dashboard:
-- **Memory** — `~/.claude/projects/{path}/memory/MEMORY.md` + individual memory files
-- **Todos/Tasks** — `TodoWrite` tool calls within sessions
-- **Plans** — Implementation plans created during sessions
-- **Git commits by Claude** — commits with `Co-Authored-By: Claude` signature
-- **Scheduled triggers** — cron-based remote agents
-- **Worktrees** — isolated git worktrees created by subagents
-- **Model per session** — parsed for cost calc but not shown in UI
-- **Project settings** — parsed but not surfaced in webview
-- **Hook configuration** — used internally but not visualized
+- **Plans** — Implementation plans created during sessions (conversational, no persistent data)
+- **Scheduled triggers** — cron-based remote agents (no local data source)
+- **Worktrees** — isolated git worktrees created by subagents (visible in Tools tab as tool calls)
+- **Session diff viewer** — `~/.claude/file-history/` before/after file changes
+- **Prompt library** — starred/saved prompts and pattern detection

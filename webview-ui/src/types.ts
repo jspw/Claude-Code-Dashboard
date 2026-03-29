@@ -38,6 +38,7 @@ export interface Session {
   idleTimeMs: number | null;
   activeTimeMs: number | null;
   activityRatio: number | null;
+  model: string | null;
 }
 
 export interface Turn {
@@ -107,11 +108,40 @@ export interface McpServer {
   toolCallCount: number;   // total calls across all project sessions (0 if unused)
 }
 
+export interface MemoryFile {
+  fileName: string;
+  name: string;
+  description: string;
+  type: string;       // 'user' | 'feedback' | 'project' | 'reference' | 'unknown'
+  content: string;
+}
+
+export interface ProjectMemory {
+  index: string | null;   // MEMORY.md contents
+  files: MemoryFile[];
+}
+
+export interface PlanFile {
+  fileName: string;
+  name: string;
+  description: string;
+  content: string;
+}
+
+export interface HookConfig {
+  event: string;
+  matcher?: string;
+  command: string;
+}
+
 export interface ProjectConfig {
   claudeMd: string | null;
   mcpServers: Record<string, McpServer>;
   projectSettings: Record<string, unknown>;
   commands: { name: string; content: string }[];
+  plans: PlanFile[];
+  memory: ProjectMemory;
+  hooks: HookConfig[];
 }
 
 export interface ToolUsageStat {
@@ -204,6 +234,23 @@ export interface WeeklyProjectStats {
   tokens: number;
   costUsd: number;
   dailyBreakdown: { date: string; tokens: number; costUsd: number; sessions: number }[];
+}
+
+export interface ClaudeCommit {
+  hash: string;
+  shortHash: string;
+  author: string;
+  date: number;
+  subject: string;
+  filesChanged: number;
+}
+
+export interface SessionTodoSnapshot {
+  sessionId: string;
+  sessionDate: number;
+  sessionSummary: string | null;
+  todos: { content: string; status: string }[];
+  timestamp: number;
 }
 
 export interface ProjectStats {

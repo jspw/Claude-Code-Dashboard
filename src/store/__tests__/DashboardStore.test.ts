@@ -1,10 +1,12 @@
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardStore } from '../DashboardStore';
 import { createPopulatedStore } from '../../__tests__/helpers/store-helpers';
 import { makeProject, makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/sessions';
 
 vi.mock('fs');
+vi.mock('child_process', () => ({ execSync: vi.fn() }));
 
 type SettingsParserLike = {
   readClaudeMd(projectPath: string): string | null;
@@ -13,6 +15,11 @@ type SettingsParserLike = {
   readUserClaudeJson(homeDir: string): Record<string, unknown>;
   readProjectMcpJson(projectPath: string): Record<string, unknown>;
   readProjectCommands(projectPath: string): { name: string; content: string }[];
+  readProjectPlans(projectPath: string): { fileName: string; name: string; description: string; content: string }[];
+  readProjectMemory(claudeDir: string, projectId: string): {
+    index: string | null;
+    files: { fileName: string; name: string; description: string; type: string; content: string }[];
+  };
 };
 type StoreWithSettingsParser = {
   settingsParser: SettingsParserLike;
@@ -150,23 +157,177 @@ describe('DashboardStore', () => {
     expect(productivity).toHaveLength(24);
   });
 
-  it('merges config sources and MCP tool counts', () => {
+  it('merges config sources, memory, hooks, and MCP tool counts', () => {
     const store = makeStore();
     const settingsParser = (store as unknown as StoreWithSettingsParser).settingsParser;
     vi.spyOn(settingsParser, 'readClaudeMd').mockReturnValue('# Rules');
-    vi.spyOn(settingsParser, 'readProjectSettings').mockReturnValue({ mcpServers: { github: { command: 'from-project' } }, project: true });
-    vi.spyOn(settingsParser, 'readGlobalSettings').mockReturnValue({ mcpServers: { github: { command: 'from-global' }, local: { type: 'stdio' } } });
+    vi.spyOn(settingsParser, 'readProjectSettings').mockReturnValue({
+      mcpServers: { github: { command: 'from-project' } },
+      project: true,
+      hooks: {
+        Stop: [{ matcher: 'Edit', command: 'echo project-stop' }],
+        PostToolUse: [{ command: 'echo post-tool' }],
+      },
+    });
+    vi.spyOn(settingsParser, 'readGlobalSettings').mockReturnValue({
+      mcpServers: { github: { command: 'from-global' }, local: { type: 'stdio' } },
+      hooks: {
+        Stop: [{ command: 'echo global-stop' }],
+        PreToolUse: 'skip-me' as unknown as unknown[],
+      },
+    });
     vi.spyOn(settingsParser, 'readUserClaudeJson').mockReturnValue({ mcpServers: { user: { url: 'http://localhost' } } });
     vi.spyOn(settingsParser, 'readProjectMcpJson').mockReturnValue({ mcpServers: { github: { command: 'from-mcp-json' } } });
     vi.spyOn(settingsParser, 'readProjectCommands').mockReturnValue([{ name: 'deploy', content: 'Deploy it' }]);
+    vi.spyOn(settingsParser, 'readProjectPlans').mockReturnValue([{ fileName: 'PLAN.md', name: 'Execution Plan', description: 'Current roadmap', content: '# Plan' }]);
+    vi.spyOn(settingsParser, 'readProjectMemory').mockReturnValue({
+      index: '# Memory',
+      files: [{ fileName: 'prefs.md', name: 'prefs', description: 'Saved preferences', type: 'user', content: 'Use tests first.' }],
+    });
 
     const config = store.getProjectConfig('p1');
 
     expect(config.claudeMd).toBe('# Rules');
-    expect(config.projectSettings).toEqual({ mcpServers: { github: { command: 'from-project' } }, project: true });
+    expect(config.projectSettings).toEqual({
+      mcpServers: { github: { command: 'from-project' } },
+      project: true,
+      hooks: {
+        Stop: [{ matcher: 'Edit', command: 'echo project-stop' }],
+        PostToolUse: [{ command: 'echo post-tool' }],
+      },
+    });
     expect(config.mcpServers.github.command).toBe('from-mcp-json');
     expect(config.mcpServers.github.toolCallCount).toBe(2);
     expect(config.commands).toEqual([{ name: 'deploy', content: 'Deploy it' }]);
+    expect(config.plans).toEqual([{ fileName: 'PLAN.md', name: 'Execution Plan', description: 'Current roadmap', content: '# Plan' }]);
+    expect(config.memory).toEqual({
+      index: '# Memory',
+      files: [{ fileName: 'prefs.md', name: 'prefs', description: 'Saved preferences', type: 'user', content: 'Use tests first.' }],
+    });
+    expect(config.hooks).toEqual([
+      { event: 'Stop', matcher: 'Edit', command: 'echo project-stop' },
+      { event: 'PostToolUse', matcher: undefined, command: 'echo post-tool' },
+    ]);
+  });
+
+  it('returns todo snapshots using the latest TodoWrite state per session', () => {
+    const project = makeProject({ id: 'todos', name: 'Todos', lastActive: NOW });
+    const todoSession = makeSession({
+      id: 'todo-session',
+      projectId: 'todos',
+      startTime: NOW - HOUR,
+      sessionSummary: 'Prepare release',
+      turns: [
+        makeTurn({
+          role: 'assistant',
+          timestamp: NOW - HOUR + 1000,
+          toolCalls: [
+            makeToolCall({
+              name: 'TodoWrite',
+              input: { todos: [{ content: 'Draft notes', status: 'pending' }] },
+            }),
+          ],
+        }),
+        makeTurn({
+          role: 'assistant',
+          timestamp: NOW - HOUR + 3000,
+          toolCalls: [
+            makeToolCall({
+              name: 'TodoWrite',
+              input: {
+                todos: [
+                  { content: 'Draft notes', status: 'completed' },
+                  { content: 'Tag release' },
+                ],
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+    const olderTodoSession = makeSession({
+      id: 'older-todo-session',
+      projectId: 'todos',
+      startTime: NOW - 2 * HOUR,
+      sessionSummary: 'Older todos',
+      turns: [
+        makeTurn({
+          role: 'assistant',
+          timestamp: NOW - 2 * HOUR + 1000,
+          toolCalls: [
+            makeToolCall({
+              name: 'TodoWrite',
+              input: { todos: [{ content: 'Backfill docs', status: 'in_progress' }] },
+            }),
+          ],
+        }),
+      ],
+    });
+    const ignoredSession = makeSession({
+      id: 'ignored',
+      projectId: 'todos',
+      turns: [makeTurn({ role: 'assistant', toolCalls: [makeToolCall({ name: 'Read' })] })],
+    });
+    const store = createPopulatedStore([project], { todos: [todoSession, olderTodoSession, ignoredSession] });
+
+    expect(store.getProjectTodos('todos')).toEqual([
+      {
+        sessionId: 'todo-session',
+        sessionDate: NOW - HOUR,
+        sessionSummary: 'Prepare release',
+        todos: [
+          { content: 'Draft notes', status: 'completed' },
+          { content: 'Tag release', status: 'pending' },
+        ],
+        timestamp: NOW - HOUR + 3000,
+      },
+      {
+        sessionId: 'older-todo-session',
+        sessionDate: NOW - 2 * HOUR,
+        sessionSummary: 'Older todos',
+        todos: [{ content: 'Backfill docs', status: 'in_progress' }],
+        timestamp: NOW - 2 * HOUR + 1000,
+      },
+    ]);
+  });
+
+  it('parses Claude co-authored commits and handles missing git data', () => {
+    const project = makeProject({ id: 'git-project', path: '/repo/git-project' });
+    const store = createPopulatedStore([project], { 'git-project': [] });
+    vi.mocked(execSync).mockReturnValue([
+      'abcdef1234567890|Alice|1736940000|feat: add tests',
+      ' 2 files changed, 10 insertions(+)',
+      '1122334455667788|Bob|1736936400|fix: handle pipes | safely',
+    ].join('\n') as ReturnType<typeof execSync>);
+
+    expect(store.getClaudeCommits('missing')).toEqual([]);
+    expect(store.getClaudeCommits('git-project')).toEqual([
+      {
+        hash: 'abcdef1234567890',
+        shortHash: 'abcdef12',
+        author: 'Alice',
+        date: 1736940000 * 1000,
+        subject: 'feat: add tests',
+        filesChanged: 2,
+      },
+      {
+        hash: '1122334455667788',
+        shortHash: '11223344',
+        author: 'Bob',
+        date: 1736936400 * 1000,
+        subject: 'fix: handle pipes | safely',
+        filesChanged: 0,
+      },
+    ]);
+    expect(execSync).toHaveBeenCalledWith(
+      'git log --all --grep="Co-Authored-By:.*Claude" --format="%H|%an|%at|%s" --shortstat -100',
+      expect.objectContaining({ cwd: '/repo/git-project', encoding: 'utf-8', timeout: 5000 }),
+    );
+
+    vi.mocked(execSync).mockImplementation(() => {
+      throw new Error('git unavailable');
+    });
+    expect(store.getClaudeCommits('git-project')).toEqual([]);
   });
 
   it('handles live events and debounced updates', async () => {
@@ -186,7 +347,7 @@ describe('DashboardStore', () => {
 
   it('covers empty-state getters and prompt categorization branches', () => {
     const emptyStore = createPopulatedStore([], {});
-    expect(emptyStore.getProjectConfig('missing')).toEqual({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [] });
+    expect(emptyStore.getProjectConfig('missing')).toEqual({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [], plans: [], memory: { index: null, files: [] }, hooks: [] });
     expect(emptyStore.getMonthlyTokens()).toBe(0);
     expect(emptyStore.getToolUsageStats()).toEqual([]);
     expect(emptyStore.getStreak()).toEqual({ currentStreak: 0, longestStreak: 0, totalActiveDays: 0 });

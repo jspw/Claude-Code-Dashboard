@@ -246,12 +246,32 @@ function TurnBlock({ turn }: { turn: Turn }) {
 
 // ── SessionDetail ──────────────────────────────────────────────────────────────
 
+function modelLabel(model: string | null): string | null {
+  if (!model) return null;
+  if (model.includes('opus')) return 'Opus';
+  if (model.includes('haiku')) return 'Haiku';
+  if (model.includes('sonnet')) return 'Sonnet';
+  return null;
+}
+
+function modelBadgeColor(model: string | null): string {
+  if (!model) return '';
+  if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
+  if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';
+  return 'text-blue-400 bg-blue-500/15';
+}
+
 export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
   const totalCost = session.costUsd + (session.subagentCostUsd ?? 0);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
         <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
+        {modelLabel(session.model) && (
+          <span className={`font-semibold px-1.5 py-0.5 rounded opacity-100 ${modelBadgeColor(session.model)}`}>
+            {modelLabel(session.model)}
+          </span>
+        )}
         <span>·</span>
         <span>{formatDuration(session.durationMs)}</span>
         <span>·</span>

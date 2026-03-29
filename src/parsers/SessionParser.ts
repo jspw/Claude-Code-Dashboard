@@ -229,6 +229,7 @@ export class SessionParser {
         idleTimeMs: computedIdleTimeMs,
         activeTimeMs: computedActiveTimeMs,
         activityRatio,
+        model: detectedModel !== 'default' ? modelKey(detectedModel) : null,
       };
     } catch (e) {
       console.error('Failed to parse session file:', filePath, e);

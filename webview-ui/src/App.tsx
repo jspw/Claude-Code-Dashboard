@@ -8,7 +8,7 @@ import {
   PatternCount, ToolUsageStat, HotFile,
   ProjectedCost, StreakData, EfficiencyStats, WeeklyRecap,
   RecentFileChange, ProductivityHour, BudgetStatus,
-  ProjectStats, ProjectFile,
+  ProjectStats, ProjectFile, SessionTodoSnapshot, ClaudeCommit,
 } from './types';
 
 declare global {
@@ -39,15 +39,17 @@ export default function App() {
   }
 
   if (view === 'project') {
-    const { project, sessions, subagentSessions, config, projectStats, projectFiles } = data as {
+    const { project, sessions, subagentSessions, config, projectStats, projectFiles, projectTodos, claudeCommits } = data as {
       project: Project;
       sessions: Session[];
       subagentSessions?: Session[];
       config?: ProjectConfig;
       projectStats?: ProjectStats;
       projectFiles?: ProjectFile[];
+      projectTodos?: SessionTodoSnapshot[];
+      claudeCommits?: ClaudeCommit[];
     };
-    return <ProjectDetail project={project} sessions={sessions} subagentSessions={subagentSessions} config={config} projectStats={projectStats} projectFiles={projectFiles} />;
+    return <ProjectDetail project={project} sessions={sessions} subagentSessions={subagentSessions} config={config} projectStats={projectStats} projectFiles={projectFiles} projectTodos={projectTodos} claudeCommits={claudeCommits} />;
   }
 
   const {
