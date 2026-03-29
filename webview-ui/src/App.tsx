@@ -34,8 +34,8 @@ export default function App() {
   }, []);
 
   if (view === 'sidebar') {
-    const { projects, stats } = data as { projects: Project[]; stats: DashboardStats };
-    return <Sidebar projects={projects ?? []} stats={stats} />;
+    const { projects, stats, selectedProjectId } = data as { projects: Project[]; stats: DashboardStats; selectedProjectId?: string | null };
+    return <Sidebar projects={projects ?? []} stats={stats} selectedProjectId={selectedProjectId ?? null} />;
   }
 
   if (view === 'project') {

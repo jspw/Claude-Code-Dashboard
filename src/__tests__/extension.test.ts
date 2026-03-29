@@ -30,12 +30,13 @@ const mockFileWatcher = { start: vi.fn() };
 const mockEventWatcher = { start: vi.fn() };
 const mockHookManager = { injectHooks: vi.fn(() => Promise.resolve()), needsReinjection: vi.fn(() => false) };
 const mockAlertManager = { checkWeeklyDigest: vi.fn() };
+const mockSidebarProvider = { setSelectedProject: vi.fn(), clearSelectedProject: vi.fn() };
 
 vi.mock('../store/DashboardStore', () => ({ DashboardStore: vi.fn(() => mockStore) }));
 vi.mock('../watchers/FileWatcher', () => ({ FileWatcher: vi.fn(() => mockFileWatcher) }));
 vi.mock('../watchers/EventWatcher', () => ({ EventWatcher: vi.fn(() => mockEventWatcher) }));
 vi.mock('../hooks/HookManager', () => ({ HookManager: vi.fn(() => mockHookManager) }));
-vi.mock('../providers/SidebarProvider', () => ({ SidebarProvider: vi.fn(() => ({})) }));
+vi.mock('../providers/SidebarProvider', () => ({ SidebarProvider: vi.fn(() => mockSidebarProvider) }));
 vi.mock('../providers/StatusBarProvider', () => ({ StatusBarProvider: vi.fn(() => ({ dispose: vi.fn() })) }));
 vi.mock('../webviews/DashboardPanel', () => ({ DashboardPanel: { createOrShow: vi.fn() } }));
 vi.mock('../webviews/ProjectPanel', () => ({ ProjectPanel: { createOrShow: vi.fn() } }));
@@ -97,6 +98,7 @@ describe('extension activate', () => {
 
     const openProjectHandler = getRegisteredCommand('claudeDashboard.openProject');
     openProjectHandler('p1');
+    expect(mockSidebarProvider.setSelectedProject).toHaveBeenCalledWith('p1');
     expect(ProjectPanel.createOrShow).toHaveBeenCalledWith(context, mockStore, 'p1');
   });
 
@@ -155,6 +157,7 @@ describe('extension activate', () => {
     await exportHandler('missing-project', 'json');
     await exportHandler('p1', 'json');
 
+    expect(mockSidebarProvider.clearSelectedProject).toHaveBeenCalledOnce();
     expect(DashboardPanel.createOrShow).toHaveBeenCalledTimes(2);
     expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
     expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);

@@ -13,6 +13,7 @@ describe('Sidebar', () => {
     render(
       <Sidebar
         stats={makeStats({ activeSessionCount: 1, tokensTodayTotal: 1200 })}
+        selectedProjectId="b"
         projects={[
           makeProject({ id: 'a', name: 'Active', isActive: true, lastActive: Date.now() }),
           makeProject({ id: 'b', name: 'Recent', isActive: false, lastActive: Date.now() - 2 * 86_400_000 }),
@@ -22,6 +23,8 @@ describe('Sidebar', () => {
     );
 
     expect(screen.getByText('1 active · 1.2k tokens today')).toBeInTheDocument();
+    expect(screen.getByText('open')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Recent/ })).toHaveAttribute('aria-current', 'page');
     expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Recent').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Older').length).toBeGreaterThan(0);
