@@ -11,6 +11,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.6.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.5.2...claude-code-dashboard-v1.6.0) (2026-03-29)
+
+
+### Features
+
+* Improve some designs and sense ([a1deadd](https://github.com/jspw/Claude-Code-Dashboard/commit/a1deadda0d95eda6516c8525e40703246d389bde))
+* make side projects selected when open ([40c98d1](https://github.com/jspw/Claude-Code-Dashboard/commit/40c98d178ba64e92480f538655271480805a21a8))
+* polish the main dashboard aliging with project details views ([3e3f20e](https://github.com/jspw/Claude-Code-Dashboard/commit/3e3f20ed3468377c4a9cb873ea33038d1cacfef9))
+* redesign the project detail view ([a346612](https://github.com/jspw/Claude-Code-Dashboard/commit/a346612dedaf347d06e714311b8215a4460ed8ed))
+
+
+### Bug Fixes
+
+* add estimated cost warning in all over the places ([fbc26a6](https://github.com/jspw/Claude-Code-Dashboard/commit/fbc26a61961038ae551fa56b947368bca8d64bf4))
+
+
+### Refactors
+
+* unit test coverage ([ccd2d48](https://github.com/jspw/Claude-Code-Dashboard/commit/ccd2d483a679506c950d4d84bca2cf22c2196abe))
+
 ## [1.5.2](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.5.1...claude-code-dashboard-v1.5.2) (2026-03-23)
 
 
