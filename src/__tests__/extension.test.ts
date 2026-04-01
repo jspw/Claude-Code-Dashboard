@@ -30,7 +30,7 @@ const mockFileWatcher = { start: vi.fn() };
 const mockEventWatcher = { start: vi.fn() };
 const mockHookManager = { injectHooks: vi.fn(() => Promise.resolve()), needsReinjection: vi.fn(() => false) };
 const mockAlertManager = { checkWeeklyDigest: vi.fn() };
-const mockSidebarProvider = { setSelectedProject: vi.fn(), clearSelectedProject: vi.fn() };
+const mockSidebarProvider = { setSelectedProject: vi.fn(), clearSelectedProject: vi.fn(), enableAutoOpen: vi.fn() };
 
 vi.mock('../store/DashboardStore', () => ({ DashboardStore: vi.fn(() => mockStore) }));
 vi.mock('../watchers/FileWatcher', () => ({ FileWatcher: vi.fn(() => mockFileWatcher) }));
@@ -76,7 +76,7 @@ describe('extension activate', () => {
     expect(mockFileWatcher.start).toHaveBeenCalledWith(context);
     expect(mockEventWatcher.start).toHaveBeenCalledWith(context);
     expect(mockStore.initialize).toHaveBeenCalledOnce();
-    expect(DashboardPanel.createOrShow).toHaveBeenCalledWith(context, mockStore);
+    expect(mockSidebarProvider.enableAutoOpen).toHaveBeenCalledOnce();
     expect(mockAlertManager.checkWeeklyDigest).toHaveBeenCalledOnce();
     expect(typeof deactivate).toBe('function');
   });
@@ -158,7 +158,7 @@ describe('extension activate', () => {
     await exportHandler('p1', 'json');
 
     expect(mockSidebarProvider.clearSelectedProject).toHaveBeenCalledOnce();
-    expect(DashboardPanel.createOrShow).toHaveBeenCalledTimes(2);
+    expect(DashboardPanel.createOrShow).toHaveBeenCalledOnce();
     expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
     expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);
     expect(deactivate()).toBeUndefined();

@@ -19,7 +19,11 @@ type WebviewLike = {
   postMessage: ReturnType<typeof vi.fn>;
   onDidReceiveMessage: (callback: (message: SidebarMessage) => void) => DisposableLike;
 };
-type WebviewViewLike = { webview: WebviewLike };
+type WebviewViewLike = {
+  webview: WebviewLike;
+  visible?: boolean;
+  onDidChangeVisibility?: (callback: (visible: boolean) => void) => DisposableLike;
+};
 
 describe('SidebarProvider', () => {
   beforeEach(() => {
@@ -60,6 +64,8 @@ describe('SidebarProvider', () => {
           return { dispose: vi.fn() };
         }),
       },
+      visible: false,
+      onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
     };
 
     provider.resolveWebviewView(webviewView as unknown as vscode.WebviewView);
