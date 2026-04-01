@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.6.1](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.6.0...claude-code-dashboard-v1.6.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* aoto dashboard open on vscode startup ([943d015](https://github.com/jspw/Claude-Code-Dashboard/commit/943d015b0e1397b51a14aeb0c8c209bfc1649552))
+* Auto dashboard open on vscode startup ([9be3bce](https://github.com/jspw/Claude-Code-Dashboard/commit/9be3bce560d66e88c6ebe879102b88ba9dbb85c3))
+* unit tests ([175388b](https://github.com/jspw/Claude-Code-Dashboard/commit/175388b015dd9d870aae42a7fa3e5f3f344e2cd4))
+
 ## [1.6.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.5.2...claude-code-dashboard-v1.6.0) (2026-03-29)
 
 
