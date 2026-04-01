@@ -83,8 +83,10 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initial data load
   await store.initialize();
 
-  // Open dashboard automatically on activation
-  DashboardPanel.createOrShow(context, store);
+  // Allow sidebar clicks to open the dashboard now that startup is complete.
+  // resolveWebviewView may have already fired during startup (if sidebar was previously visible),
+  // so any subsequent visibility change will trigger the dashboard open.
+  sidebarProvider.enableAutoOpen();
 
   // Check weekly digest on activation
   alertManager.checkWeeklyDigest();
