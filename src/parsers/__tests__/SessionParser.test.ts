@@ -102,6 +102,57 @@ describe('SessionParser', () => {
     expect(result?.turns[1].attachments).toBeUndefined();
   });
 
+  it('buffers file attachments that arrive before their user turn', () => {
+    const session = [
+      JSON.stringify({
+        type: 'attachment',
+        uuid: 'att-early',
+        timestamp: '2025-01-15T09:59:59Z',
+        cwd: '/home/user/project',
+        attachment: {
+          type: 'file',
+          filename: '/home/user/project/notes.md',
+          displayPath: 'notes.md',
+        },
+      }),
+      JSON.stringify({
+        type: 'attachment',
+        uuid: 'att-early-dup',
+        timestamp: '2025-01-15T09:59:59Z',
+        attachment: {
+          type: 'file',
+          filename: '/home/user/project/notes.md',
+          displayPath: 'notes.md',
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        uuid: 'u1',
+        timestamp: '2025-01-15T10:00:00Z',
+        message: { content: 'See @notes.md' },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        uuid: 'a1',
+        timestamp: '2025-01-15T10:00:30Z',
+        message: {
+          model: 'claude-sonnet-4',
+          content: [{ type: 'text', text: 'Ok' }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+          stop_reason: 'end_turn',
+        },
+      }),
+    ].join('\n');
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(session));
+
+    const result = parser.parseFile('/sessions/pending.jsonl', 'proj-1');
+
+    expect(result?.turns[0].role).toBe('user');
+    expect(result?.turns[0].attachments).toEqual([
+      { path: '/home/user/project/notes.md', displayPath: 'notes.md' },
+    ]);
+  });
+
   it('tracks tool calls, modified files, created files, and MCP server names', () => {
     vi.mocked(fs.readFileSync)
       .mockReturnValueOnce(asReadResult(SESSION_WITH_TOOLS))
