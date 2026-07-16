@@ -7,6 +7,8 @@ import {
   MINIMAL_SESSION,
   MULTI_TURN_SESSION,
   SESSION_ARRAY_CONTENT,
+  SESSION_WITH_ATTACHMENTS,
+  SESSION_WITH_IDE_TAGS,
   SESSION_WITH_CACHE,
   SESSION_WITH_COMMAND_MESSAGE,
   SESSION_WITH_MCP,
@@ -77,6 +79,27 @@ describe('SessionParser', () => {
     expect(commandResult?.turns[0].content).toBe('Real prompt here');
     expect(commandResult?.sessionSummary).toBe('Real prompt here');
     expect(multiResult?.promptCount).toBe(2);
+  });
+
+  it('strips IDE-injected context tags from user turns and summaries', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_IDE_TAGS));
+    const result = parser.parseFile('/sessions/ide.jsonl', 'proj-1');
+
+    expect(result?.turns[0].content).toBe('Fix the build script');
+    expect(result?.sessionSummary).toBe('Fix the build script');
+  });
+
+  it('attaches @-tagged files to the preceding user turn', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_ATTACHMENTS));
+    const result = parser.parseFile('/sessions/attach.jsonl', 'proj-1');
+
+    expect(result?.turns).toHaveLength(2);
+    expect(result?.turns[0].attachments).toEqual([
+      { path: '/home/user/project/docs/plan.md', displayPath: 'docs/plan.md' },
+      { path: '/home/user/project/src/index.ts', displayPath: 'src/index.ts' },
+    ]);
+    // non-file attachments (skill listings etc.) are ignored
+    expect(result?.turns[1].attachments).toBeUndefined();
   });
 
   it('tracks tool calls, modified files, created files, and MCP server names', () => {

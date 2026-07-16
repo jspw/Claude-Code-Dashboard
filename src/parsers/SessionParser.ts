@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { Session, Turn, ToolCall } from '../store/DashboardStore';
+import { Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
 
 const MODEL_COSTS: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
   'claude-opus-4':    { input: 15,   output: 75,  cacheWrite: 18.75, cacheRead: 1.5  },
@@ -57,6 +57,9 @@ export class SessionParser {
       let sessionSummary: string | null = null;
       let hasThinking = false;
       let thinkingTokens = 0;
+      // File attachments appear as separate entries right after the user
+      // message that @-tagged them; buffer any that arrive before their turn.
+      let pendingAttachments: TurnAttachment[] = [];
 
       for (const line of lines) {
         try {
@@ -76,8 +79,12 @@ export class SessionParser {
               ? rawContent.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('')
               : typeof rawContent === 'string' ? rawContent : '';
 
-            // Skip internal command messages for turn content
-            const displayText = text.replace(/<command-message>.*?<\/command-message>/gs, '').trim();
+            // Skip internal command messages and IDE-injected context for turn content
+            const displayText = text
+              .replace(/<command-message>.*?<\/command-message>/gs, '')
+              .replace(/<ide_opened_file>.*?<\/ide_opened_file>/gs, '')
+              .replace(/<ide_selection>.*?<\/ide_selection>/gs, '')
+              .trim();
 
             // Capture first meaningful user prompt as session summary
             if (!sessionSummary && displayText.length > 0) {
@@ -92,7 +99,25 @@ export class SessionParser {
               outputTokens: 0,
               toolCalls: [],
               timestamp: ts,
+              ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}),
             });
+            pendingAttachments = [];
+          }
+
+          if (entry.type === 'attachment' && entry.attachment?.type === 'file') {
+            const path = (entry.attachment.filename || entry.attachment.displayPath || '') as string;
+            const displayPath = (entry.attachment.displayPath || entry.attachment.filename || '') as string;
+            if (path) {
+              const lastTurn = turns[turns.length - 1];
+              if (lastTurn && lastTurn.role === 'user') {
+                lastTurn.attachments = lastTurn.attachments ?? [];
+                if (!lastTurn.attachments.some(a => a.path === path)) {
+                  lastTurn.attachments.push({ path, displayPath });
+                }
+              } else if (!pendingAttachments.some(a => a.path === path)) {
+                pendingAttachments.push({ path, displayPath });
+              }
+            }
           }
 
           if (entry.type === 'assistant' && entry.message) {

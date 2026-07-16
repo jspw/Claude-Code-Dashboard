@@ -49,6 +49,12 @@ export interface Turn {
   outputTokens: number;
   toolCalls: ToolCall[];
   timestamp: number;
+  attachments?: TurnAttachment[];  // files the user @-tagged in this prompt
+}
+
+export interface TurnAttachment {
+  path: string;         // absolute file path
+  displayPath: string;  // project-relative path as shown in the prompt
 }
 
 export interface ToolCall {

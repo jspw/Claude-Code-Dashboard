@@ -1,5 +1,5 @@
 import React from 'react';
-import { Session, Turn, ToolCall } from '../types';
+import { Session, Turn, ToolCall, TurnAttachment } from '../types';
 import { formatTokens, formatDuration } from '../utils/format';
 import { toolColor } from '../utils/toolColor';
 import { MarkdownView } from './MarkdownView';
@@ -180,13 +180,33 @@ function AgentCallBlock({ tc, tokenInfo }: { tc: ToolCall; tokenInfo?: { input: 
   );
 }
 
+function AttachmentChips({ attachments }: { attachments: TurnAttachment[] }) {
+  return (
+    <div className="px-3 pb-1.5 flex flex-wrap gap-1.5">
+      {attachments.map(a => (
+        <span
+          key={a.path}
+          title={a.path}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] max-w-full min-w-0"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="shrink-0" aria-hidden="true">
+            <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0113.25 16h-9.5A1.75 1.75 0 012 14.25V1.75zm1.75-.25a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 019 4.25V1.5H3.75zm6.75.062V4.25c0 .138.112.25.25.25h2.688a.252.252 0 00-.011-.013l-2.914-2.914a.25.25 0 00-.013-.011z" />
+          </svg>
+          <span className="truncate">{a.displayPath || a.path}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function TurnBlock({ turn }: { turn: Turn }) {
   const [collapsed, setCollapsed] = React.useState(false);
   const content = turn.content?.trim() ?? '';
   const hasContent = content.length > 0;
   const hasTools = turn.toolCalls.length > 0;
+  const attachments = turn.attachments ?? [];
 
-  if (!hasContent && !hasTools) return null;
+  if (!hasContent && !hasTools && attachments.length === 0) return null;
 
   if (turn.role === 'user' && hasContent) {
     const sys = parseSystemContent(content);
@@ -223,12 +243,26 @@ function TurnBlock({ turn }: { turn: Turn }) {
   const isUser = turn.role === 'user';
 
   return (
-    <div className="space-y-2">
-      <div className={`rounded-lg overflow-hidden text-sm ${isUser ? 'bg-[var(--vscode-input-background)]' : 'bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)]'}`}>
+    <div className={`space-y-2 ${isUser ? 'pl-6 sm:pl-10' : ''}`}>
+      <div className={`rounded-lg overflow-hidden text-sm ${isUser
+        ? 'bg-[var(--vscode-input-background)] border-l-2 border-[var(--vscode-button-background)]'
+        : 'bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)]'}`}>
         <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-2">
-          <span className="text-xs opacity-40 font-semibold uppercase tracking-wider">
-            {isUser ? 'You' : 'Claude'}
-          </span>
+          {isUser ? (
+            <span className="inline-flex items-center gap-1.5 text-xs opacity-50 font-semibold uppercase tracking-wider">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M10.561 8.073a6.005 6.005 0 013.432 5.142.75.75 0 11-1.498.07 4.5 4.5 0 00-8.99 0 .75.75 0 01-1.498-.07 6.004 6.004 0 013.431-5.142 3.999 3.999 0 115.123 0zM10.5 5a2.5 2.5 0 10-5 0 2.5 2.5 0 005 0z"/>
+              </svg>
+              You
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--vscode-button-background)]">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 1l1.68 4.32L14 7l-4.32 1.68L8 13 6.32 8.68 2 7l4.32-1.68L8 1zm5 8l.84 2.16L16 12l-2.16.84L13 15l-.84-2.16L10 12l2.16-.84L13 9z"/>
+              </svg>
+              Claude
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-2">
             {hasContent && <CopyButton text={content} />}
             <CollapseButton collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
@@ -236,9 +270,10 @@ function TurnBlock({ turn }: { turn: Turn }) {
         </div>
         {!collapsed && (
           <>
+            {attachments.length > 0 && <AttachmentChips attachments={attachments} />}
             {hasContent && (
               <div className="px-3 pb-1">
-                <MarkdownView content={content} compact />
+                <MarkdownView content={content} compact highlightMentions={isUser} />
               </div>
             )}
             {regularCalls.length > 0 && (
