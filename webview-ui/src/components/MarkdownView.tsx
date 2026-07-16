@@ -1,16 +1,48 @@
 import React from 'react';
 
+// Matches @-tagged file paths in prompts (e.g. @src/index.ts); the lookbehind
+// keeps emails (user@host) and mid-word @ from matching.
+const MENTION_TOKEN_RE = /(?<![\w.@])@[\w./~-]*[\w/]/;
+const INLINE_RE = /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/;
+const INLINE_WITH_MENTIONS_RE = /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*|(?<![\w.@])@[\w./~-]*[\w/])/;
+
+function MentionChip({ text }: { text: string }) {
+  return (
+    <span className="font-mono text-xs px-1 rounded bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-textLink-foreground)]">
+      {text}
+    </span>
+  );
+}
+
+/** Plain one-line text with @file mentions highlighted (no markdown parsing). */
+export function MentionText({ text }: { text: string }) {
+  const parts = text.split(/((?<![\w.@])@[\w./~-]*[\w/])/);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith('@') && MENTION_TOKEN_RE.test(part)
+          ? <MentionChip key={i} text={part} />
+          : part
+      )}
+    </>
+  );
+}
+
 function renderInline(
   text: string,
   onLinkClick?: (href: string) => void,
+  highlightMentions = false,
 ): React.ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/);
+  const parts = text.split(highlightMentions ? INLINE_WITH_MENTIONS_RE : INLINE_RE);
   return parts.map((part, i) => {
     if (!part) {
       return null;
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
       return <code key={i} className="font-mono text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] px-1 rounded">{part.slice(1, -1)}</code>;
+    }
+    if (highlightMentions && part.startsWith('@') && MENTION_TOKEN_RE.test(part)) {
+      return <MentionChip key={i} text={part} />;
     }
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
@@ -51,10 +83,12 @@ export function MarkdownView({
   content,
   compact = false,
   onLinkClick,
+  highlightMentions = false,
 }: {
   content: string;
   compact?: boolean;
   onLinkClick?: (href: string) => void;
+  highlightMentions?: boolean;
 }) {
   const lines = content.split('\n');
   const elements: React.ReactNode[] = [];
@@ -81,15 +115,15 @@ export function MarkdownView({
     const h3 = line.match(/^### (.+)/);
     const h2 = line.match(/^## (.+)/);
     const h1 = line.match(/^# (.+)/);
-    if (h1) { elements.push(<h1 key={key++} className="text-xl font-bold mt-5 mb-2 border-b border-[var(--vscode-panel-border)] pb-1">{renderInline(h1[1], onLinkClick)}</h1>); i++; continue; }
-    if (h2) { elements.push(<h2 key={key++} className="text-base font-bold mt-4 mb-1.5">{renderInline(h2[1], onLinkClick)}</h2>); i++; continue; }
-    if (h3) { elements.push(<h3 key={key++} className="text-sm font-semibold mt-3 mb-1 opacity-80">{renderInline(h3[1], onLinkClick)}</h3>); i++; continue; }
+    if (h1) { elements.push(<h1 key={key++} className="text-xl font-bold mt-5 mb-2 border-b border-[var(--vscode-panel-border)] pb-1">{renderInline(h1[1], onLinkClick, highlightMentions)}</h1>); i++; continue; }
+    if (h2) { elements.push(<h2 key={key++} className="text-base font-bold mt-4 mb-1.5">{renderInline(h2[1], onLinkClick, highlightMentions)}</h2>); i++; continue; }
+    if (h3) { elements.push(<h3 key={key++} className="text-sm font-semibold mt-3 mb-1 opacity-80">{renderInline(h3[1], onLinkClick, highlightMentions)}</h3>); i++; continue; }
 
     // Bullet list
     if (line.match(/^[\-\*] /)) {
       const items: React.ReactNode[] = [];
       while (i < lines.length && lines[i].match(/^[\-\*] /)) {
-        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].slice(2), onLinkClick)}</li>);
+        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].slice(2), onLinkClick, highlightMentions)}</li>);
         i++;
       }
       elements.push(<ul key={key++} className="list-disc pl-5 my-2 space-y-0.5 text-sm">{items}</ul>);
@@ -100,7 +134,7 @@ export function MarkdownView({
     if (line.match(/^\d+\. /)) {
       const items: React.ReactNode[] = [];
       while (i < lines.length && lines[i].match(/^\d+\. /)) {
-        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].replace(/^\d+\. /, ''), onLinkClick)}</li>);
+        items.push(<li key={i} className="leading-relaxed">{renderInline(lines[i].replace(/^\d+\. /, ''), onLinkClick, highlightMentions)}</li>);
         i++;
       }
       elements.push(<ol key={key++} className="list-decimal pl-5 my-2 space-y-0.5 text-sm">{items}</ol>);
@@ -128,7 +162,7 @@ export function MarkdownView({
       !lines[i].match(/^---+$/)
     ) { paraLines.push(lines[i]); i++; }
     if (paraLines.length) {
-      elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '), onLinkClick)}</p>);
+      elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '), onLinkClick, highlightMentions)}</p>);
     }
   }
 

@@ -72,6 +72,24 @@ describe('SessionDetail', () => {
     expect(modelBadgeColor(null)).toBe('');
   });
 
+  it('renders @-tagged file chips on user turns', () => {
+    const session = makeSession({
+      turns: [
+        makeTurn({
+          role: 'user',
+          content: 'Review @docs/plan.md please',
+          attachments: [{ path: '/home/user/project/docs/plan.md', displayPath: 'docs/plan.md' }],
+          timestamp: 1,
+        }),
+      ],
+    });
+
+    render(<SessionDetail session={session} turns={session.turns} loading={false} />);
+    const chip = screen.getByText('docs/plan.md');
+    expect(chip).toBeInTheDocument();
+    expect(chip.closest('span[title]')).toHaveAttribute('title', '/home/user/project/docs/plan.md');
+  });
+
   it('renders cache, thinking, subagent cost, collapsed previews, and tool-only assistant turns', () => {
     const longContent = 'A'.repeat(140);
     const session = makeSession({

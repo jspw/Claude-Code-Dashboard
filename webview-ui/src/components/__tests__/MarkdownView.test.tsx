@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '../../__tests__/helpers/render-helpers';
-import { CommandBlock, MarkdownView } from '../MarkdownView';
+import { CommandBlock, MarkdownView, MentionText } from '../MarkdownView';
 
 describe('MarkdownView', () => {
   it('renders headings, emphasis, code blocks, and lists', () => {
@@ -21,6 +21,21 @@ describe('MarkdownView', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(screen.getByText('Deploy')).toBeInTheDocument();
     expect(screen.getByText('now')).toBeInTheDocument();
+  });
+
+  it('highlights @file mentions only when enabled, leaving emails alone', () => {
+    const { rerender } = render(<MarkdownView content={'Review @docs/plan.md and email me@example.com'} highlightMentions />);
+    expect(screen.getByText('@docs/plan.md')).toHaveClass('font-mono');
+    expect(screen.queryByText('@example.com')).not.toBeInTheDocument();
+
+    rerender(<MarkdownView content={'Review @docs/plan.md'} />);
+    expect(screen.queryByText('@docs/plan.md')).not.toBeInTheDocument();
+  });
+
+  it('renders mention chips in plain text via MentionText', () => {
+    render(<div data-testid="summary"><MentionText text={'Fix @src/index.ts now'} /></div>);
+    expect(screen.getByText('@src/index.ts')).toHaveClass('font-mono');
+    expect(screen.getByTestId('summary')).toHaveTextContent('Fix @src/index.ts now');
   });
 
   it('renders markdown links and forwards link clicks', () => {

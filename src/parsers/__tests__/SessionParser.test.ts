@@ -7,6 +7,8 @@ import {
   MINIMAL_SESSION,
   MULTI_TURN_SESSION,
   SESSION_ARRAY_CONTENT,
+  SESSION_WITH_ATTACHMENTS,
+  SESSION_WITH_IDE_TAGS,
   SESSION_WITH_CACHE,
   SESSION_WITH_COMMAND_MESSAGE,
   SESSION_WITH_MCP,
@@ -77,6 +79,78 @@ describe('SessionParser', () => {
     expect(commandResult?.turns[0].content).toBe('Real prompt here');
     expect(commandResult?.sessionSummary).toBe('Real prompt here');
     expect(multiResult?.promptCount).toBe(2);
+  });
+
+  it('strips IDE-injected context tags from user turns and summaries', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_IDE_TAGS));
+    const result = parser.parseFile('/sessions/ide.jsonl', 'proj-1');
+
+    expect(result?.turns[0].content).toBe('Fix the build script');
+    expect(result?.sessionSummary).toBe('Fix the build script');
+  });
+
+  it('attaches @-tagged files to the preceding user turn', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_ATTACHMENTS));
+    const result = parser.parseFile('/sessions/attach.jsonl', 'proj-1');
+
+    expect(result?.turns).toHaveLength(2);
+    expect(result?.turns[0].attachments).toEqual([
+      { path: '/home/user/project/docs/plan.md', displayPath: 'docs/plan.md' },
+      { path: '/home/user/project/src/index.ts', displayPath: 'src/index.ts' },
+    ]);
+    // non-file attachments (skill listings etc.) are ignored
+    expect(result?.turns[1].attachments).toBeUndefined();
+  });
+
+  it('buffers file attachments that arrive before their user turn', () => {
+    const session = [
+      JSON.stringify({
+        type: 'attachment',
+        uuid: 'att-early',
+        timestamp: '2025-01-15T09:59:59Z',
+        cwd: '/home/user/project',
+        attachment: {
+          type: 'file',
+          filename: '/home/user/project/notes.md',
+          displayPath: 'notes.md',
+        },
+      }),
+      JSON.stringify({
+        type: 'attachment',
+        uuid: 'att-early-dup',
+        timestamp: '2025-01-15T09:59:59Z',
+        attachment: {
+          type: 'file',
+          filename: '/home/user/project/notes.md',
+          displayPath: 'notes.md',
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        uuid: 'u1',
+        timestamp: '2025-01-15T10:00:00Z',
+        message: { content: 'See @notes.md' },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        uuid: 'a1',
+        timestamp: '2025-01-15T10:00:30Z',
+        message: {
+          model: 'claude-sonnet-4',
+          content: [{ type: 'text', text: 'Ok' }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+          stop_reason: 'end_turn',
+        },
+      }),
+    ].join('\n');
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(session));
+
+    const result = parser.parseFile('/sessions/pending.jsonl', 'proj-1');
+
+    expect(result?.turns[0].role).toBe('user');
+    expect(result?.turns[0].attachments).toEqual([
+      { path: '/home/user/project/notes.md', displayPath: 'notes.md' },
+    ]);
   });
 
   it('tracks tool calls, modified files, created files, and MCP server names', () => {

@@ -21,6 +21,80 @@ export const MINIMAL_SESSION = [
   }),
 ].join('\n');
 
+export const SESSION_WITH_IDE_TAGS = [
+  JSON.stringify({
+    type: 'user',
+    uuid: 'u1',
+    timestamp: '2025-01-15T10:00:00Z',
+    cwd: '/home/user/project',
+    message: {
+      content:
+        '<ide_opened_file>The user opened the file /home/user/project/package.json in the IDE.</ide_opened_file>' +
+        '<ide_selection>The user selected lines 1 to 3</ide_selection>Fix the build script',
+    },
+  }),
+  JSON.stringify({
+    type: 'assistant',
+    uuid: 'a1',
+    timestamp: '2025-01-15T10:01:00Z',
+    message: {
+      model: 'claude-sonnet-4',
+      content: [{ type: 'text', text: 'On it.' }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+      stop_reason: 'end_turn',
+    },
+  }),
+].join('\n');
+
+export const SESSION_WITH_ATTACHMENTS = [
+  JSON.stringify({
+    type: 'user',
+    uuid: 'u1',
+    timestamp: '2025-01-15T10:00:00Z',
+    cwd: '/home/user/project',
+    message: { content: 'Review @docs/plan.md and @src/index.ts please' },
+  }),
+  JSON.stringify({
+    type: 'attachment',
+    uuid: 'att1',
+    timestamp: '2025-01-15T10:00:00Z',
+    attachment: {
+      type: 'file',
+      filename: '/home/user/project/docs/plan.md',
+      displayPath: 'docs/plan.md',
+      content: { type: 'text', file: { filePath: '/home/user/project/docs/plan.md', content: '# Plan' } },
+    },
+  }),
+  JSON.stringify({
+    type: 'attachment',
+    uuid: 'att2',
+    timestamp: '2025-01-15T10:00:00Z',
+    attachment: {
+      type: 'file',
+      filename: '/home/user/project/src/index.ts',
+      displayPath: 'src/index.ts',
+      content: { type: 'text', file: { filePath: '/home/user/project/src/index.ts', content: 'export {};' } },
+    },
+  }),
+  JSON.stringify({
+    type: 'attachment',
+    uuid: 'att3',
+    timestamp: '2025-01-15T10:00:00Z',
+    attachment: { type: 'skill_listing', skills: [] },
+  }),
+  JSON.stringify({
+    type: 'assistant',
+    uuid: 'a1',
+    timestamp: '2025-01-15T10:01:00Z',
+    message: {
+      model: 'claude-sonnet-4',
+      content: [{ type: 'text', text: 'Reviewed.' }],
+      usage: { input_tokens: 100, output_tokens: 50 },
+      stop_reason: 'end_turn',
+    },
+  }),
+].join('\n');
+
 export const SESSION_WITH_TOOLS = [
   JSON.stringify({
     type: 'user',

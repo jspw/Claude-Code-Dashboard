@@ -3,7 +3,7 @@ import { Project, Session, Turn, ProjectConfig, McpServer, ProjectStats, Project
 import { vscode } from '../vscode';
 import { formatTokens, formatDuration, timeAgo } from '../utils/format';
 import { toolColor } from '../utils/toolColor';
-import { MarkdownView, CommandBlock } from '../components/MarkdownView';
+import { MarkdownView, CommandBlock, MentionText } from '../components/MarkdownView';
 import SessionDetail from '../components/SessionDetail';
 import WeeklyStatsTab from '../components/WeeklyStatsTab';
 import ToolUsageBar from '../components/ToolUsageBar';
@@ -73,6 +73,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
   const [selectedMemoryFileName, setSelectedMemoryFileName] = useState<string | null>(null);
   const [selectedPlanFileName, setSelectedPlanFileName] = useState<string | null>(null);
   const memoryPreviewRef = useRef<HTMLDivElement | null>(null);
+  const sessionDetailRef = useRef<HTMLElement | null>(null);
   const sorted = [...(sessions ?? [])].sort((a, b) => b.startTime - a.startTime);
 
   useEffect(() => {
@@ -92,6 +93,9 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
     setTurns([]);
     setTurnsLoading(true);
     vscode.postMessage({ type: 'getSessionTurns', sessionId: session.id });
+    requestAnimationFrame(() => {
+      sessionDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }, []);
 
   if (!project) {
@@ -287,7 +291,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
         {/* ── Sessions tab ── */}
         {activeTab === 'sessions' && (
           <div className="grid gap-4 xl:grid-cols-3">
-            <section className="min-w-0 overflow-hidden xl:col-span-1">
+            <section className={`min-w-0 overflow-hidden xl:col-span-1 ${selectedSession ? 'hidden xl:block' : ''}`}>
               <h3 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Sessions</h3>
               <div className="space-y-1 overflow-y-auto max-h-[70vh]">
                 {sorted.map(s => (
@@ -310,16 +314,27 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                       {(s.subagentCostUsd ?? 0) > 0 && <span className="ml-1 text-blue-400">+sub</span>}
                     </div>
                     {s.sessionSummary && (
-                      <div className="text-xs opacity-50 mt-1 truncate italic">{s.sessionSummary}</div>
+                      <div className="text-xs opacity-50 mt-1 truncate italic"><MentionText text={s.sessionSummary} /></div>
                     )}
                   </button>
                 ))}
               </div>
             </section>
 
-            <section className="min-w-0 overflow-hidden xl:col-span-2">
+            <section ref={sessionDetailRef} className={`min-w-0 overflow-hidden xl:col-span-2 ${selectedSession ? '' : 'hidden xl:block'}`}>
               {selectedSession ? (
-                <SessionDetail key={selectedSession.id} session={selectedSession} turns={turns} loading={turnsLoading} />
+                <>
+                  <button
+                    onClick={() => setSelectedSession(null)}
+                    className="xl:hidden flex items-center gap-1.5 text-xs px-2.5 py-1.5 mb-3 rounded border border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7.5 2.5 4 6l3.5 3.5" />
+                    </svg>
+                    All sessions
+                  </button>
+                  <SessionDetail key={selectedSession.id} session={selectedSession} turns={turns} loading={turnsLoading} />
+                </>
               ) : (
                 <div className="rounded-xl border border-dashed border-[var(--vscode-panel-border)] opacity-50 text-sm text-center px-4 py-12">
                   Select a session to view details
