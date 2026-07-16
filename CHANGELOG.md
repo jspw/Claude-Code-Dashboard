@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.6.1...claude-code-dashboard-v1.7.0) (2026-07-16)
+
+
+### Features
+
+* **sessions:** surface @-tagged file attachments in turn view ([e264d0d](https://github.com/jspw/Claude-Code-Dashboard/commit/e264d0d70b3a7fcc886e032098b629cd7216629c))
+* **sessions:** surface @-tagged file attachments in turn view ([6969b83](https://github.com/jspw/Claude-Code-Dashboard/commit/6969b83a481872df2f972037096ae831795d069c))
+
 ## [1.6.1](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.6.0...claude-code-dashboard-v1.6.1) (2026-04-01)
 
 
