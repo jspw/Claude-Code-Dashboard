@@ -11,6 +11,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.8.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.7.0...claude-code-dashboard-v1.8.0) (2026-07-18)
+
+
+### Features
+
+* **ci:** add git hooks ([124e271](https://github.com/jspw/Claude-Code-Dashboard/commit/124e271d083c76c135f69b799714cee00b3f4f78))
+* **home:** clean up designs ([4db4c7e](https://github.com/jspw/Claude-Code-Dashboard/commit/4db4c7ea83977db18609c29da325ae4260ea5ed5))
+* **home:** clean up designs ([10dfa90](https://github.com/jspw/Claude-Code-Dashboard/commit/10dfa903e9693e459f74744b901679cfc59efa8e))
+
+
+### Bug Fixes
+
+* **hooks:** set GIT_PAGER=false and PAGER=false ([c48ec72](https://github.com/jspw/Claude-Code-Dashboard/commit/c48ec727e903deb1e3bb2aa120f4d523229d37c0))
+* **test:** increase test coverage ([ca1fb4c](https://github.com/jspw/Claude-Code-Dashboard/commit/ca1fb4c003d01fb18a15a23d3ab85f879427b6f6))
+* **unit-tests:** fix coverage issue ([ad87aed](https://github.com/jspw/Claude-Code-Dashboard/commit/ad87aed0290381559beb011e9b5e2db0e698bca2))
+
 ## [1.7.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.6.1...claude-code-dashboard-v1.7.0) (2026-07-16)
 
 
