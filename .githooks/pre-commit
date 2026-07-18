@@ -5,7 +5,7 @@ set -eu
 cd "$(git rev-parse --show-toplevel)"
 
 echo "Checking staged changes for whitespace errors..."
-git diff --cached --check
+GIT_PAGER=cat git --no-pager diff --no-ext-diff --cached --check
 
 echo "Running pre-commit type checks..."
 npm run verify:quick
