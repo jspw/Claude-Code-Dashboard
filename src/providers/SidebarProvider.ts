@@ -41,6 +41,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.setSelectedProject(msg.projectId);
         vscode.commands.executeCommand('claudeDashboard.openProject', msg.projectId);
       }
+      if (msg.type === 'openFolder' && msg.path) {
+        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
+      }
     });
 
     // If autoOpen is already enabled when resolveWebviewView fires, the user clicked the icon

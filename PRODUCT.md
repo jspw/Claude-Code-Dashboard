@@ -53,56 +53,46 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 ## Feature Inventory
 
 ### Status Bar
-- Live token count and estimated cost for today
-- Session count indicator (pulses when a session is active)
-- Clicks open the full dashboard
+- Compact by default: active-session count + today's estimated cost (`✱ 3 · $4.32`). `full` mode adds a label and today's tokens; `off` hides it (setting `claudeDashboard.statusBar`).
+- Rich markdown tooltip: today's tokens/cost, project/active counts, and a budget line when a budget is set.
+- Turns amber (`statusBarItem.warningBackground`) once monthly spend passes 80% of budget — the always-visible guardrail.
+- Clicks open the full dashboard.
 
 ### Sidebar (Activity Bar)
-- Project list grouped into: Active Now / Recent (last 7 days) / All Projects
-- Each project shows last-active time and live indicator
-- Single click opens the project detail view
-- Refresh button triggers a full re-scan
+- Rebuilt on the shared Tailwind/VS Code-variable system (no more private inline styles).
+- Project list grouped into: Active / Recent (last 7 days) / Older, collapsible.
+- Each row shows a second line: relative last-active time · tokens · estimated cost; a hover button reveals the folder in the OS.
+- Single click opens the project detail view; a "View Dashboard" button opens the full dashboard.
 
-### Dashboard — Overview Tab
-- Budget alert banner (yellow at 80%, red at 100%)
-- Weekly recap card: sessions, projects, tokens, estimated cost, files modified, top project, streak
-- Stats strip: tokens today / estimated cost today / tokens this week / estimated cost this week
-- Active project cards with live pulse animation
-- Filterable, sortable project list (filter by name; sort by last active, estimated cost, or session count)
+### Dashboard — Home Tab
+- Optional first-run welcome strip (local-only / cost-estimate / enable-live-tracking), dismissible.
+- Full-screen empty state when no `~/.claude` data exists yet, with a Refresh action.
+- Budget: a progress bar whenever a budget is set, a banner at ≥80%, and an inline "Set a monthly budget" affordance that writes the VS Code setting.
+- Weekly recap card: sessions, projects, tokens, estimated cost, files modified, top project, streak.
+- Stats strip: tokens today / estimated cost today / tokens this week / estimated cost this week.
+- Active project cards with live pulse animation.
+- Filterable, sortable project list with honest truncation ("Show all N" past 20).
 
-### Dashboard — Charts Tab
-- Token usage over the last 30 days (line chart)
-- Token usage by project (bar chart)
-- Projected monthly estimated cost with progress bar
-- Estimated cost by project this month (horizontal bar chart)
+### Dashboard — Analytics Tab
+- A single tab that merges the former Charts and Insights, with a 7 / 30 / 90-day range control applied to the usage chart (its title names the active range).
+- Spend: token usage line, usage by project, projected monthly cost with progress bar.
+- Patterns: prompt categories, usage heatmap by hour/day, productivity by hour.
+- Efficiency: avg tokens per prompt, avg tool calls per session, avg session duration, first-turn resolution rate.
+- Tools & files: tool usage breakdown, hot files (15 most-edited), recent file changes (last 7 days).
 
-### Dashboard — Search Tab
-- Full-text search across every user prompt ever written
-- Results show project name, session ID, and a highlighted snippet
-- Searching "refactor auth" finds every time you asked Claude to do that across all projects
+### Dashboard — Sessions Tab
+- The promised cross-project browser: every session across all projects, sortable (recent / most expensive / most tokens) and filterable by project and model.
+- "Most expensive this month" quick filter — answers the #1 cost question directly.
+- Full-text prompt search, **backend-served** (`searchPrompts` → `promptSearchResults`), with highlighted matches. No prompt corpus is shipped in the dashboard payload.
+- Clicking a session or a search hit opens the owning project with that session pre-selected.
 
-### Dashboard — Insights Tab
-- Prompt category breakdown: Fix/Bug, Explain, Refactor, Feature, Test, Other
-- Usage heatmap by hour and day of week
-- Efficiency stats: avg tokens per prompt, avg tool calls per session, avg session duration, first-turn resolution rate
-- Tool usage breakdown with percentage bars
-- Productivity by hour (avg tool calls and files modified per session)
-- Hot files: the 15 most-edited files across all sessions
-- Recent file changes (last 7 days)
-
-### Project Detail View
-- Project header with tech stack badges, path, and live indicator
-- Stats: total tokens, estimated cost, session count
-- Sessions tab: chronological session list with:
-  - Session summary line (first user prompt as italic preview)
-  - Extended thinking badge (⚡) for sessions that used thinking mode
-  - Duration, token count, prompt count
-  - Subagent cost indicator when subagents were spawned
-  - Session detail pane: full stats, files touched, turn-by-turn conversation
-  - Cache hit rate and thinking token counts in session metadata
-- CLAUDE.md tab: project instructions displayed verbatim
-- MCP Servers tab: all configured MCP servers for the project with command/URL
-- Export: JSON or CSV export of all session data
+### Project Detail View — 5 tabs
+- Header: name, live indicator, tech-stack badges, path (click reveals the folder), single Export dropdown (JSON / CSV).
+- **Overview**: stat cards (tokens, estimated cost, sessions, last active), the 3 most recent sessions, and quick links into the other tabs.
+- **Sessions**: day-grouped list titled by the first prompt (with model/thinking SVG chips and a second metadata line), a filter box, a Subagents toggle that nests delegated runs, and the turn-by-turn detail pane. The detail header includes a one-click "copy resume command" (`claude --resume <id>`).
+- **Activity**: usage trend, files touched (each opens in the editor), tool usage + recent calls, and Claude co-authored commits.
+- **Setup**: CLAUDE.md, memory (index + referenced files), custom commands, MCP servers, and automation (hooks + project settings).
+- **Work**: plans and todos — the tab is hidden entirely when both are empty.
 
 ### Alert System
 - Monthly token budget: alert when monthly token count exceeds configured limit
@@ -111,10 +101,11 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 - All alerts fire as VS Code notifications; max once per day to avoid spam
 
 ### Real-Time Hook System
-- On first activation, offers to inject `PostToolUse` and `Stop` hooks into `~/.claude/settings.json`
-- Hooks append events to `~/.claude/.dashboard-events.jsonl`
-- EventWatcher polls that file every 500ms and pushes live events to the React frontend
-- Enables "Claude is using the Bash tool right now" visibility
+- On first activation, asks once whether to enable live tracking (Enable / Not now / Never). Any explicit choice is persisted — the dialog never re-asks.
+- With consent, injects `PostToolUse` and `Stop` hooks into `~/.claude/settings.json` (backup saved first). Hooks append events to `~/.claude/.dashboard-events.jsonl`.
+- Injected hooks are armed by a `~/.claude/.dashboard-live` marker file and no-op without it, so stale hook entries can never write events.
+- Toggle anytime via the `Enable Live Tracking` / `Disable Live Tracking` commands; disabling strips the hooks from settings.json. Uninstalling the extension runs a cleanup script that removes the hooks, marker, and event file.
+- EventWatcher polls the event file every 500ms and pushes live events to the React frontend, enabling "Claude is using the Bash tool right now" visibility
 
 ---
 
@@ -127,6 +118,7 @@ Knowing whether Claude is actually running right now (not just "was active 20 mi
 | `~/.claude/sessions/` | Live session metadata (pid, sessionId, cwd) |
 | `~/.claude/settings.json` | Global Claude settings and MCP server config |
 | `~/.claude/.dashboard-events.jsonl` | Live hook events (created by extension) |
+| `~/.claude/.dashboard-live` | Marker that arms the injected hooks (created/removed by extension) |
 | `<project>/.claude/settings.local.json` | Per-project MCP and settings |
 | `<project>/CLAUDE.md` | Project instructions |
 
@@ -139,7 +131,8 @@ The extension never writes to any of these files except `settings.json` (to inje
 - Token counts come from Claude's local JSONL session logs.
 - Displayed `totalTokens` exclude cache-read tokens, because cache reads can dwarf the meaningful token count in long sessions.
 - Estimated cost is computed locally from parsed token usage, detected model family, and a static pricing table bundled with the extension.
-- Model detection is heuristic: `opus` maps to Opus pricing, `haiku` maps to Haiku pricing, and everything else falls back to Sonnet pricing.
+- Model detection maps the recorded model ID to a pricing family (Fable/Mythos, current Opus, legacy Opus 4.0/4.1, Sonnet, Haiku 4.5, legacy Haiku). Unknown models fall back to Sonnet pricing and the session is marked `est.*` in the UI (`pricingConfidence: 'fallback'`).
+- The bundled pricing table records its last-updated date (2026-06), shown in the cost disclaimer.
 - Aggregate estimated cost includes subagent-attributed cost when Claude spawns subagents.
 - These numbers are helpful operational estimates, but they are not guaranteed to match Anthropic billing, invoices, or future price changes exactly.
 
@@ -151,7 +144,7 @@ The extension never writes to any of these files except `settings.json` (to inje
 - It does not store data in a database or send it to any server.
 - It does not require an API key.
 - It does not work if you do not have Claude Code installed (`~/.claude/` must exist).
-- It does not show content from sessions that happened before installation — it reads historical data from existing JSONL files, so past sessions are visible retroactively.
+- It shows sessions from before installation too — historical JSONL files in `~/.claude/projects/` are parsed on first load, so past sessions are visible retroactively.
 
 ---
 

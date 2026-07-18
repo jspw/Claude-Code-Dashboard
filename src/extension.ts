@@ -38,12 +38,22 @@ export async function activate(context: vscode.ExtensionContext) {
       sidebarProvider.clearSelectedProject();
       DashboardPanel.createOrShow(context, store);
     }),
-    vscode.commands.registerCommand('claudeDashboard.openProject', (projectId: string) => {
+    vscode.commands.registerCommand('claudeDashboard.openProject', (projectId: string, sessionId?: string) => {
       sidebarProvider.setSelectedProject(projectId);
-      ProjectPanel.createOrShow(context, store, projectId);
+      ProjectPanel.createOrShow(context, store, projectId, sessionId);
     }),
     vscode.commands.registerCommand('claudeDashboard.refresh', () => {
       store.refresh();
+    }),
+    vscode.commands.registerCommand('claudeDashboard.enableLiveTracking', async () => {
+      await hookManager.injectHooks(context.globalState);
+      await context.globalState.update('hooksConsent', 'enabled');
+      vscode.window.showInformationMessage('Live tracking enabled. Hooks were added to ~/.claude/settings.json (backup saved as settings.json.bak).');
+    }),
+    vscode.commands.registerCommand('claudeDashboard.disableLiveTracking', async () => {
+      await hookManager.removeHooks(context.globalState);
+      await context.globalState.update('hooksConsent', 'declined');
+      vscode.window.showInformationMessage('Live tracking disabled. Dashboard hooks were removed from ~/.claude/settings.json.');
     }),
     vscode.commands.registerCommand('claudeDashboard.exportSessions', async (projectId: string, format: 'json' | 'csv') => {
       const project = store.getProject(projectId);
@@ -91,20 +101,33 @@ export async function activate(context: vscode.ExtensionContext) {
   // Check weekly digest on activation
   alertManager.checkWeeklyDigest();
 
-  // Setup hooks (ask user on first run, or re-inject if outdated)
-  const hooksConfigured = context.globalState.get<boolean>('hooksConfigured', false);
-  if (!hooksConfigured) {
+  // Setup hooks. Ask at most once: any explicit choice is persisted and the
+  // dialog never returns. Live tracking can be toggled later via commands.
+  let consent = context.globalState.get<string>('hooksConsent');
+  if (!consent && context.globalState.get<boolean>('hooksConfigured', false)) {
+    // Migrate the legacy flag from versions that only persisted "Yes"
+    consent = 'enabled';
+    await context.globalState.update('hooksConsent', 'enabled');
+  }
+  if (!consent) {
     const answer = await vscode.window.showInformationMessage(
-      `Claude Code Dashboard found ${store.getProjects().length} projects. Auto-configure real-time hooks for live session tracking?`,
-      'Yes, configure hooks',
-      'Skip'
+      'Claude Code Dashboard can show live session activity by adding two hooks to ~/.claude/settings.json (a backup is made first). Enable live tracking?',
+      'Enable',
+      'Not now',
+      'Never'
     );
-    if (answer === 'Yes, configure hooks') {
+    if (answer === 'Enable') {
       await hookManager.injectHooks(context.globalState);
-      await context.globalState.update('hooksConfigured', true);
-      vscode.window.showInformationMessage('Claude Code Dashboard hooks configured. Real-time tracking is active.');
+      await context.globalState.update('hooksConsent', 'enabled');
+      vscode.window.showInformationMessage('Live tracking enabled. Disable anytime via "Claude Code Dashboard: Disable Live Tracking".');
+    } else if (answer === 'Not now') {
+      await context.globalState.update('hooksConsent', 'declined');
+    } else if (answer === 'Never') {
+      await context.globalState.update('hooksConsent', 'never');
     }
-  } else if (hookManager.needsReinjection(context.globalState)) {
+    // Dismissing the notification without choosing leaves consent unset,
+    // so the question is asked again next startup.
+  } else if (consent === 'enabled' && hookManager.needsReinjection(context.globalState)) {
     await hookManager.injectHooks(context.globalState);
   }
 

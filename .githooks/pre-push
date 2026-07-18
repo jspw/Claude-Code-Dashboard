@@ -3,4 +3,6 @@
 set -eu
 
 cd "$(git rev-parse --show-toplevel)"
-exec node scripts/validate-commit-message.mjs --edit "$1"
+
+echo "Running pre-push verification..."
+npm run verify

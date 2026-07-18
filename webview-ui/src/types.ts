@@ -38,7 +38,8 @@ export interface Session {
   idleTimeMs: number | null;
   activeTimeMs: number | null;
   activityRatio: number | null;
-  model: string | null;
+  model: string | null;           // raw detected model ID (e.g. 'claude-opus-4-8')
+  pricingConfidence?: 'exact' | 'fallback'; // 'fallback' = unknown model, priced at Sonnet rates
 }
 
 export interface Turn {
@@ -99,6 +100,25 @@ export interface PromptSearchResult {
   sessionId: string;
   turn: Turn;
   snippet: string;
+}
+
+/** Lightweight cross-project session row for the dashboard Sessions tab. */
+export interface SessionRow {
+  id: string;
+  projectId: string;
+  projectName: string;
+  summary: string | null;
+  model: string | null;
+  pricingConfidence?: 'exact' | 'fallback';
+  startTime: number;
+  durationMs: number | null;
+  totalTokens: number;
+  costUsd: number;
+  subagentCostUsd: number;
+  hasThinking: boolean;
+  promptCount: number;
+  toolCallCount: number;
+  isActiveSession: boolean;
 }
 
 export interface PatternCount {

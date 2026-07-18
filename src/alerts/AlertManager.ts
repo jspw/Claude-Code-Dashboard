@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import { DashboardStore } from '../store/DashboardStore';
+import { formatTokens, formatCost } from '../utils/format';
+
+const OPEN_DASHBOARD = 'Open Dashboard';
+const SNOOZE = 'Snooze this month';
 
 export class AlertManager {
   private store: DashboardStore;
@@ -16,10 +20,30 @@ export class AlertManager {
     });
   }
 
+  /** Budget alerts snoozed until the start of next month? */
+  private isSnoozed(): boolean {
+    const until = this.context.globalState.get<number>('budgetSnoozeUntil', 0);
+    return Date.now() < until;
+  }
+
+  private snoozeUntilNextMonth() {
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    this.context.globalState.update('budgetSnoozeUntil', nextMonth);
+  }
+
+  private handleAlertAction(choice: string | undefined) {
+    if (choice === OPEN_DASHBOARD) {
+      vscode.commands.executeCommand('claudeDashboard.openDashboard');
+    } else if (choice === SNOOZE) {
+      this.snoozeUntilNextMonth();
+    }
+  }
+
   private checkTokenBudget() {
     const config = vscode.workspace.getConfiguration('claudeDashboard');
     const budget = config.get<number>('monthlyTokenBudget', 0);
-    if (budget <= 0) { return; }
+    if (budget <= 0 || this.isSnoozed()) { return; }
 
     const monthlyTokens = this.store.getMonthlyTokens();
     if (monthlyTokens <= budget) { return; }
@@ -31,17 +55,17 @@ export class AlertManager {
     if (now - lastAlert < oneDayMs) { return; }
 
     this.context.globalState.update('lastBudgetAlert', now);
-    const used = (monthlyTokens / 1_000_000).toFixed(2);
-    const limit = (budget / 1_000_000).toFixed(2);
-    vscode.window.showWarningMessage(
-      `Claude Code Dashboard: Monthly token budget exceeded! Used ${used}M of ${limit}M tokens this month.`
-    );
+    void Promise.resolve(vscode.window.showWarningMessage(
+      `Monthly token budget exceeded: ${formatTokens(monthlyTokens)} of ${formatTokens(budget)} used.`,
+      OPEN_DASHBOARD,
+      SNOOZE
+    )).then(choice => this.handleAlertAction(choice));
   }
 
   private checkCostBudget() {
     const config = vscode.workspace.getConfiguration('claudeDashboard');
     const budgetUsd = config.get<number>('monthlyBudgetUsd', 0);
-    if (budgetUsd <= 0) { return; }
+    if (budgetUsd <= 0 || this.isSnoozed()) { return; }
 
     const { costUsd } = this.store.getMonthlyUsage();
     const pct = costUsd / budgetUsd;
@@ -54,27 +78,32 @@ export class AlertManager {
       const lastAlert = this.context.globalState.get<number>('lastCostBudgetExceededAlert', 0);
       if (now - lastAlert < oneDayMs) { return; }
       this.context.globalState.update('lastCostBudgetExceededAlert', now);
-      vscode.window.showWarningMessage(
-        `Claude Code Dashboard: Monthly cost budget exceeded! Spent $${costUsd.toFixed(2)} of $${budgetUsd.toFixed(2)} budget.`
-      );
+      void Promise.resolve(vscode.window.showWarningMessage(
+        `Monthly cost budget exceeded: ${formatCost(costUsd)} of ${formatCost(budgetUsd)} (estimated).`,
+        OPEN_DASHBOARD,
+        SNOOZE
+      )).then(choice => this.handleAlertAction(choice));
     } else {
       const lastAlert = this.context.globalState.get<number>('lastCostBudget80Alert', 0);
       if (now - lastAlert < oneDayMs) { return; }
       this.context.globalState.update('lastCostBudget80Alert', now);
-      vscode.window.showWarningMessage(
-        `Claude Code Dashboard: 80% of monthly cost budget used. Spent $${costUsd.toFixed(2)} of $${budgetUsd.toFixed(2)}.`
-      );
+      void Promise.resolve(vscode.window.showWarningMessage(
+        `80% of monthly cost budget used: ${formatCost(costUsd)} of ${formatCost(budgetUsd)} (estimated).`,
+        OPEN_DASHBOARD,
+        SNOOZE
+      )).then(choice => this.handleAlertAction(choice));
     }
   }
 
   checkWeeklyDigest() {
-    const now = new Date();
-    // Only run on Mondays
-    if (now.getDay() !== 1) { return; }
+    const config = vscode.workspace.getConfiguration('claudeDashboard');
+    if (!config.get<boolean>('weeklyDigest', true)) { return; }
 
+    // Fire on the first activation at least 7 days after the last digest —
+    // not Mondays-only, which silently skipped users who didn't open VS Code that day.
     const lastDigest = this.context.globalState.get<number>('lastWeeklyDigest', 0);
-    const sixDaysMs = 6 * 86_400_000;
-    if (Date.now() - lastDigest < sixDaysMs) { return; }
+    const sevenDaysMs = 7 * 86_400_000;
+    if (Date.now() - lastDigest < sevenDaysMs) { return; }
 
     this.context.globalState.update('lastWeeklyDigest', Date.now());
     this.showWeeklyDigest();
@@ -86,29 +115,32 @@ export class AlertManager {
     const projects = this.store.getProjects();
 
     let totalTokens = 0;
-    const activeProjects = new Set<string>();
+    let totalCostUsd = 0;
+    let sessionCount = 0;
+    let topProject: { name: string; tokens: number } | null = null;
+    const perProjectTokens = new Map<string, number>();
 
     for (const project of projects) {
       const sessions = this.store.getSessions(project.id);
       for (const session of sessions) {
         if (session.startTime >= now - weekMs) {
           totalTokens += session.totalTokens;
-          activeProjects.add(project.name);
+          totalCostUsd += session.costUsd;
+          sessionCount++;
+          perProjectTokens.set(project.name, (perProjectTokens.get(project.name) ?? 0) + session.totalTokens);
         }
       }
     }
 
     if (totalTokens === 0) { return; }
 
-    const tokensStr = totalTokens >= 1_000_000
-      ? `${(totalTokens / 1_000_000).toFixed(1)}M`
-      : `${(totalTokens / 1_000).toFixed(0)}k`;
+    for (const [name, tokens] of perProjectTokens) {
+      if (!topProject || tokens > topProject.tokens) { topProject = { name, tokens }; }
+    }
 
-    const projectList = Array.from(activeProjects).slice(0, 3).join(', ');
-    const moreProjects = activeProjects.size > 3 ? ` +${activeProjects.size - 3} more` : '';
-
-    vscode.window.showInformationMessage(
-      `Claude Code Dashboard weekly digest: ${tokensStr} tokens used across ${activeProjects.size} project(s) last week. Projects: ${projectList}${moreProjects}.`
-    );
+    void Promise.resolve(vscode.window.showInformationMessage(
+      `Last week: ${sessionCount} sessions · ${formatTokens(totalTokens)} tokens · est. ${formatCost(totalCostUsd)} across ${perProjectTokens.size} project${perProjectTokens.size !== 1 ? 's' : ''}${topProject ? ` · top: ${topProject.name}` : ''}.`,
+      OPEN_DASHBOARD
+    )).then(choice => this.handleAlertAction(choice));
   }
 }

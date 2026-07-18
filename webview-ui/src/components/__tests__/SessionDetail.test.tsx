@@ -90,6 +90,47 @@ describe('SessionDetail', () => {
     expect(chip.closest('span[title]')).toHaveAttribute('title', '/home/user/project/docs/plan.md');
   });
 
+  it('truncates very long turn content behind a show-full toggle', () => {
+    const longContent = 'word '.repeat(2000).trim(); // ~10k chars
+    const session = makeSession({
+      turns: [makeTurn({ role: 'user', content: longContent, timestamp: 1 })],
+    });
+
+    render(<SessionDetail session={session} turns={session.turns} loading={false} />);
+
+    const toggle = screen.getByText(`Show full message (${longContent.length.toLocaleString()} chars)`);
+    expect(toggle).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(screen.getByText('Show less')).toBeInTheDocument();
+  });
+
+  it('parses skill-injection content into a skill event', () => {
+    const skill = parseSystemContent('Base directory for this skill: /Users/me/.claude/skills/graphify\n\n# graphify\n\nDoes things.');
+    expect(skill).toEqual({ kind: 'skill', name: 'graphify', body: '# graphify\n\nDoes things.' });
+  });
+
+  it('renders a skill-injection turn as collapsed context, not a user message', () => {
+    const body = 'x'.repeat(9000);
+    const session = makeSession({
+      turns: [makeTurn({
+        role: 'user',
+        content: `Base directory for this skill: /Users/me/.claude/skills/dataviz\n\n# Data Viz\n\n${body}`,
+        timestamp: 1,
+      })],
+    });
+
+    render(<SessionDetail session={session} turns={session.turns} loading={false} />);
+
+    expect(screen.getByText('Skill loaded')).toBeInTheDocument();
+    expect(screen.getByText('dataviz')).toBeInTheDocument();
+    // Collapsed by default — body not rendered until expanded.
+    expect(screen.queryByText('Data Viz')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Show context'));
+    expect(screen.getByText('Data Viz')).toBeInTheDocument();
+  });
+
   it('renders cache, thinking, subagent cost, collapsed previews, and tool-only assistant turns', () => {
     const longContent = 'A'.repeat(140);
     const session = makeSession({
@@ -125,8 +166,9 @@ describe('SessionDetail', () => {
     expect(screen.getByText('Opus')).toBeInTheDocument();
     expect(screen.getByText('+300 cached')).toBeInTheDocument();
     expect(screen.getByText('50% cache')).toBeInTheDocument();
-    expect(screen.getByText(/\+\$0.1250 subagents/)).toBeInTheDocument();
-    expect(screen.getByText(/\u26a1 thinking/)).toBeInTheDocument();
+    expect(screen.getByText(/\+\$0.125 subagents/)).toBeInTheDocument();
+    expect(screen.getByText(/thinking \(1.2k\)/)).toBeInTheDocument();
+    expect(screen.getByText('Copy resume command')).toBeInTheDocument();
     expect(screen.getByText('github/search')).toBeInTheDocument();
     expect(screen.getByText('repo:foo bug')).toBeInTheDocument();
     expect(screen.getByText('10↑ 20↓')).toBeInTheDocument();

@@ -7,9 +7,13 @@ export class ProjectPanel {
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
 
-  static createOrShow(context: vscode.ExtensionContext, store: DashboardStore, projectId: string) {
-    if (ProjectPanel.panels.has(projectId)) {
-      ProjectPanel.panels.get(projectId)!.panel.reveal(vscode.ViewColumn.One);
+  static createOrShow(context: vscode.ExtensionContext, store: DashboardStore, projectId: string, sessionId?: string) {
+    const existing = ProjectPanel.panels.get(projectId);
+    if (existing) {
+      existing.panel.reveal(vscode.ViewColumn.One);
+      if (sessionId) {
+        existing.panel.webview.postMessage({ type: 'selectSession', sessionId });
+      }
       return;
     }
     const project = store.getProject(projectId);
@@ -20,17 +24,18 @@ export class ProjectPanel {
       vscode.ViewColumn.One,
       { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'webview-ui', 'dist')] }
     );
-    ProjectPanel.panels.set(projectId, new ProjectPanel(panel, context, store, projectId));
+    ProjectPanel.panels.set(projectId, new ProjectPanel(panel, context, store, projectId, sessionId));
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
     store: DashboardStore,
-    projectId: string
+    projectId: string,
+    initialSessionId?: string
   ) {
     this.panel = panel;
-    this.updateContent(context, store, projectId);
+    this.updateContent(context, store, projectId, initialSessionId);
 
     store.on('updated', () => {
       this.panel.webview.postMessage({ type: 'stateUpdate', payload: this.buildState(store, projectId) });
@@ -49,6 +54,16 @@ export class ProjectPanel {
           turns: session?.turns ?? [],
         });
       }
+      if (msg.type === 'openFile' && msg.path) {
+        try {
+          await vscode.window.showTextDocument(vscode.Uri.file(msg.path), { preview: true });
+        } catch {
+          vscode.window.showWarningMessage(`Could not open ${msg.path} (it may have been moved or deleted).`);
+        }
+      }
+      if (msg.type === 'openFolder' && msg.path) {
+        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
+      }
     }, null, this.disposables);
 
     panel.onDidDispose(() => {
@@ -57,12 +72,14 @@ export class ProjectPanel {
     }, null, this.disposables);
   }
 
-  private updateContent(context: vscode.ExtensionContext, store: DashboardStore, projectId: string) {
+  private updateContent(context: vscode.ExtensionContext, store: DashboardStore, projectId: string, initialSessionId?: string) {
     this.panel.webview.html = getWebviewContent(
       this.panel.webview,
       context.extensionUri,
       'project',
-      this.buildState(store, projectId)
+      // initialSessionId only ships in the initial HTML payload (deep link from
+      // the Sessions tab); stateUpdate refreshes never re-select a session.
+      { ...this.buildState(store, projectId), ...(initialSessionId ? { initialSessionId } : {}) }
     );
   }
 

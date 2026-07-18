@@ -2,9 +2,9 @@ const esbuild = require('esbuild');
 const watch = process.argv.includes('--watch');
 
 const ctx = esbuild.context({
-  entryPoints: ['src/extension.ts'],
+  entryPoints: ['src/extension.ts', 'src/uninstall.ts'],
   bundle: true,
-  outfile: 'dist/extension.js',
+  outdir: 'dist',
   external: ['vscode'],
   format: 'cjs',
   platform: 'node',

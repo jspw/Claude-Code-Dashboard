@@ -226,4 +226,47 @@ describe('SessionParser', () => {
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it('prices model families correctly, legacy vs current', () => {
+    // Fable 5: $10 in / $50 out
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-fable-5')).toBe(60);
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-mythos-5')).toBe(60);
+    // Current Opus (4.5+): $5 in / $25 out — NOT the legacy $15/$75
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-opus-4-8')).toBe(30);
+    // Legacy Opus 4.0/4.1 keeps $15/$75
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-opus-4-1-20250805')).toBe(90);
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-opus-4-20250514')).toBe(90);
+    // Haiku 4.5: $1 / $5; legacy Haiku 3.5: $0.8 / $4
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-haiku-4-5-20251001')).toBe(6);
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'claude-3-5-haiku-20241022')).toBe(4.8);
+    // Unknown model falls back to Sonnet rates
+    expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'some-future-model')).toBe(18);
+  });
+
+  it('stores the raw model ID and flags fallback pricing confidence', () => {
+    const fableSession = [
+      JSON.stringify({ type: 'user', uuid: 'u1', timestamp: '2025-01-15T10:00:00Z', cwd: '/test', message: { content: 'Q' } }),
+      JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2025-01-15T10:01:00Z', message: { model: 'claude-fable-5', content: [{ type: 'text', text: 'A' }], usage: { input_tokens: 100, output_tokens: 50 }, stop_reason: 'stop_sequence' } }),
+    ].join('\n');
+    const unknownModelSession = fableSession.replace(/claude-fable-5/g, 'experimental-model-x');
+    const noModelSession = [
+      JSON.stringify({ type: 'user', uuid: 'u1', timestamp: '2025-01-15T10:00:00Z', cwd: '/test', message: { content: 'Q' } }),
+      JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2025-01-15T10:01:00Z', message: { content: [{ type: 'text', text: 'A' }], usage: { input_tokens: 100, output_tokens: 50 }, stop_reason: 'stop_sequence' } }),
+    ].join('\n');
+    vi.mocked(fs.readFileSync)
+      .mockReturnValueOnce(asReadResult(fableSession))
+      .mockReturnValueOnce(asReadResult(unknownModelSession))
+      .mockReturnValueOnce(asReadResult(noModelSession));
+
+    const fableResult = parser.parseFile('/sessions/fable.jsonl', 'proj-1');
+    const unknownResult = parser.parseFile('/sessions/unknown.jsonl', 'proj-1');
+    const noModelResult = parser.parseFile('/sessions/nomodel.jsonl', 'proj-1');
+
+    expect(fableResult?.model).toBe('claude-fable-5');
+    expect(fableResult?.pricingConfidence).toBe('exact');
+    expect(unknownResult?.model).toBe('experimental-model-x');
+    expect(unknownResult?.pricingConfidence).toBe('fallback');
+    expect(noModelResult?.model).toBeNull();
+    expect(noModelResult?.pricingConfidence).toBe('fallback');
+  });
 });

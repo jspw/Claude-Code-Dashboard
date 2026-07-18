@@ -5,7 +5,9 @@ const _state: Record<string, unknown> = {};
 export const workspace = {
   getConfiguration: vi.fn(() => ({
     get: vi.fn((key: string, defaultValue?: unknown) => defaultValue),
+    update: vi.fn(() => Promise.resolve()),
   })),
+  onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
   fs: {
     writeFile: vi.fn(),
   },
@@ -15,6 +17,7 @@ export const window = {
   showInformationMessage: vi.fn(),
   showWarningMessage: vi.fn(),
   showErrorMessage: vi.fn(),
+  showInputBox: vi.fn(),
   showSaveDialog: vi.fn(),
   createStatusBarItem: vi.fn(() => ({
     text: '',
@@ -54,6 +57,20 @@ export const Uri = {
     path: segments.join('/'),
   })),
 };
+
+export class MarkdownString {
+  constructor(public value: string = '') {}
+}
+
+export class ThemeColor {
+  constructor(public id: string) {}
+}
+
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
 
 export enum StatusBarAlignment {
   Left = 1,

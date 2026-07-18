@@ -1,17 +1,32 @@
 import * as fs from 'fs';
 import { Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
 
+/** Date the pricing table below was last synced against published Anthropic pricing. */
+export const PRICING_TABLE_DATE = '2026-06';
+
+// USD per million tokens by model family. Cache writes bill at 1.25x input
+// (5-minute TTL); cache reads at 0.1x input.
 const MODEL_COSTS: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
-  'claude-opus-4':    { input: 15,   output: 75,  cacheWrite: 18.75, cacheRead: 1.5  },
-  'claude-sonnet-4':  { input: 3,    output: 15,  cacheWrite: 3.75,  cacheRead: 0.3  },
-  'claude-haiku-4':   { input: 0.8,  output: 4,   cacheWrite: 1,     cacheRead: 0.08 },
-  default:            { input: 3,    output: 15,  cacheWrite: 3.75,  cacheRead: 0.3  },
+  'fable':        { input: 10,  output: 50, cacheWrite: 12.5,  cacheRead: 1    }, // Fable 5 / Mythos 5
+  'opus':         { input: 5,   output: 25, cacheWrite: 6.25,  cacheRead: 0.5  }, // Opus 4.5+
+  'opus-legacy':  { input: 15,  output: 75, cacheWrite: 18.75, cacheRead: 1.5  }, // Opus 4.0 / 4.1 / Opus 3
+  'sonnet':       { input: 3,   output: 15, cacheWrite: 3.75,  cacheRead: 0.3  }, // Sonnet 4.x / Sonnet 5
+  'haiku':        { input: 1,   output: 5,  cacheWrite: 1.25,  cacheRead: 0.1  }, // Haiku 4.5
+  'haiku-legacy': { input: 0.8, output: 4,  cacheWrite: 1,     cacheRead: 0.08 }, // Haiku 3.x
+  default:        { input: 3,   output: 15, cacheWrite: 3.75,  cacheRead: 0.3  }, // unknown model → Sonnet rates
 };
 
-function modelKey(model: string): string {
-  if (model?.includes('opus'))   { return 'claude-opus-4'; }
-  if (model?.includes('haiku'))  { return 'claude-haiku-4'; }
-  return 'claude-sonnet-4';
+export function modelKey(model: string): string {
+  const m = (model || '').toLowerCase();
+  if (m.includes('fable') || m.includes('mythos')) { return 'fable'; }
+  if (m.includes('opus')) {
+    return /opus-4-[01]\b|opus-4-2025|3-opus/.test(m) ? 'opus-legacy' : 'opus';
+  }
+  if (m.includes('haiku')) {
+    return /haiku-[4-9]/.test(m) ? 'haiku' : 'haiku-legacy';
+  }
+  if (m.includes('sonnet')) { return 'sonnet'; }
+  return 'default';
 }
 
 export interface ParsedSession extends Session {
@@ -86,8 +101,9 @@ export class SessionParser {
               .replace(/<ide_selection>.*?<\/ide_selection>/gs, '')
               .trim();
 
-            // Capture first meaningful user prompt as session summary
-            if (!sessionSummary && displayText.length > 0) {
+            // Capture first meaningful user prompt as session summary, skipping
+            // injected skill instructions (they aren't the user's actual prompt).
+            if (!sessionSummary && displayText.length > 0 && !displayText.startsWith('Base directory for this skill:')) {
               sessionSummary = displayText.slice(0, 120) + (displayText.length > 120 ? '…' : '');
             }
 
@@ -206,6 +222,9 @@ export class SessionParser {
       // and would inflate the number by 10-20x (e.g. 17M cache reads vs 1M real tokens)
       const totalTokens = inputTokens + cacheCreationTokens + outputTokens;
       const costUsd = this.estimateCostDetailed(inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, detectedModel);
+      // 'fallback' = no model recorded, or family not in the pricing table (priced at Sonnet rates)
+      const pricingConfidence: 'exact' | 'fallback' =
+        detectedModel !== 'default' && modelKey(detectedModel) !== 'default' ? 'exact' : 'fallback';
       const sessionId = filePath.split('/').pop()?.replace('.jsonl', '') || 'unknown';
 
       // endTime: last timestamp seen, or null if still active
@@ -254,7 +273,8 @@ export class SessionParser {
         idleTimeMs: computedIdleTimeMs,
         activeTimeMs: computedActiveTimeMs,
         activityRatio,
-        model: detectedModel !== 'default' ? modelKey(detectedModel) : null,
+        model: detectedModel !== 'default' ? detectedModel : null,
+        pricingConfidence,
       };
     } catch (e) {
       console.error('Failed to parse session file:', filePath, e);

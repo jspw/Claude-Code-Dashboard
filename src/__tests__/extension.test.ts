@@ -28,7 +28,7 @@ const mockStore = {
 
 const mockFileWatcher = { start: vi.fn() };
 const mockEventWatcher = { start: vi.fn() };
-const mockHookManager = { injectHooks: vi.fn(() => Promise.resolve()), needsReinjection: vi.fn(() => false) };
+const mockHookManager = { injectHooks: vi.fn(() => Promise.resolve()), removeHooks: vi.fn(() => Promise.resolve()), needsReinjection: vi.fn(() => false) };
 const mockAlertManager = { checkWeeklyDigest: vi.fn() };
 const mockSidebarProvider = { setSelectedProject: vi.fn(), clearSelectedProject: vi.fn(), enableAutoOpen: vi.fn() };
 
@@ -72,7 +72,7 @@ describe('extension activate', () => {
     expect(DashboardStore).toHaveBeenCalledOnce();
     expect(HookManager).toHaveBeenCalledOnce();
     expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith('claudeDashboard.sidebar', expect.anything(), expect.anything());
-    expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(4);
+    expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(6);
     expect(mockFileWatcher.start).toHaveBeenCalledWith(context);
     expect(mockEventWatcher.start).toHaveBeenCalledWith(context);
     expect(mockStore.initialize).toHaveBeenCalledOnce();
@@ -88,18 +88,18 @@ describe('extension activate', () => {
       return defaultValue;
     });
     vi.mocked(vscode.window.showInformationMessage)
-      .mockResolvedValueOnce('Yes, configure hooks' as unknown as InfoMessageResult)
+      .mockResolvedValueOnce('Enable' as unknown as InfoMessageResult)
       .mockResolvedValueOnce(undefined);
 
     await activate(context as unknown as vscode.ExtensionContext);
 
     expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);
-    expect(context.globalState.update).toHaveBeenCalledWith('hooksConfigured', true);
+    expect(context.globalState.update).toHaveBeenCalledWith('hooksConsent', 'enabled');
 
     const openProjectHandler = getRegisteredCommand('claudeDashboard.openProject');
     openProjectHandler('p1');
     expect(mockSidebarProvider.setSelectedProject).toHaveBeenCalledWith('p1');
-    expect(ProjectPanel.createOrShow).toHaveBeenCalledWith(context, mockStore, 'p1');
+    expect(ProjectPanel.createOrShow).toHaveBeenCalledWith(context, mockStore, 'p1', undefined);
   });
 
   it('wires refresh and exportSessions command flows end-to-end', async () => {
@@ -162,5 +162,67 @@ describe('extension activate', () => {
     expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
     expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);
     expect(deactivate()).toBeUndefined();
+  });
+
+  it('persists "Not now" so the consent dialog never re-asks', async () => {
+    const context = createMockExtensionContext();
+    context.globalState.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'hooksConsent') return undefined;
+      if (key === 'hooksConfigured') return false;
+      return defaultValue;
+    });
+    vi.mocked(vscode.window.showInformationMessage).mockResolvedValueOnce('Not now' as unknown as InfoMessageResult);
+
+    await activate(context as unknown as vscode.ExtensionContext);
+
+    expect(mockHookManager.injectHooks).not.toHaveBeenCalled();
+    expect(context.globalState.update).toHaveBeenCalledWith('hooksConsent', 'declined');
+  });
+
+  it('persists "Never" and skips the dialog once any consent is stored', async () => {
+    const context = createMockExtensionContext();
+    context.globalState.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'hooksConsent') return undefined;
+      if (key === 'hooksConfigured') return false;
+      return defaultValue;
+    });
+    vi.mocked(vscode.window.showInformationMessage).mockResolvedValueOnce('Never' as unknown as InfoMessageResult);
+
+    await activate(context as unknown as vscode.ExtensionContext);
+    expect(context.globalState.update).toHaveBeenCalledWith('hooksConsent', 'never');
+
+    // Second activation with stored consent: no dialog at all
+    vi.clearAllMocks();
+    const context2 = createMockExtensionContext();
+    context2.globalState.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'hooksConsent') return 'never';
+      return defaultValue;
+    });
+
+    await activate(context2 as unknown as vscode.ExtensionContext);
+
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    expect(mockHookManager.injectHooks).not.toHaveBeenCalled();
+  });
+
+  it('enable/disable live tracking commands inject and remove hooks', async () => {
+    const context = createMockExtensionContext();
+    context.globalState.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'hooksConsent') return 'declined';
+      return defaultValue;
+    });
+
+    await activate(context as unknown as vscode.ExtensionContext);
+
+    const enableHandler = getRegisteredCommand('claudeDashboard.enableLiveTracking');
+    const disableHandler = getRegisteredCommand('claudeDashboard.disableLiveTracking');
+
+    await enableHandler();
+    expect(mockHookManager.injectHooks).toHaveBeenCalledWith(context.globalState);
+    expect(context.globalState.update).toHaveBeenCalledWith('hooksConsent', 'enabled');
+
+    await disableHandler();
+    expect(mockHookManager.removeHooks).toHaveBeenCalledWith(context.globalState);
+    expect(context.globalState.update).toHaveBeenCalledWith('hooksConsent', 'declined');
   });
 });

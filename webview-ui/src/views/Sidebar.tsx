@@ -1,22 +1,11 @@
 import React from 'react';
 import { vscode } from '../vscode';
 import { Project, DashboardStats } from '../types';
+import { formatTokens, formatCost, timeAgo } from '../utils/format';
 
-export function sidebarTimeAgo(ts: number): string {
-  if (!ts) { return 'never'; }
-  const diff = Date.now() - ts;
-  const h = Math.floor(diff / 3_600_000);
-  const d = Math.floor(diff / 86_400_000);
-  if (h < 1) { return 'just now'; }
-  if (h < 24) { return `${h}h ago`; }
-  return `${d}d ago`;
-}
-
-export function formatSidebarTokens(n: number): string {
-  if (n >= 1_000_000) { return `${(n / 1_000_000).toFixed(1)}M`; }
-  if (n >= 1_000) { return `${(n / 1_000).toFixed(1)}k`; }
-  return String(n);
-}
+// Kept as named exports for backwards compatibility; both delegate to utils/format.
+export const sidebarTimeAgo = timeAgo;
+export const formatSidebarTokens = formatTokens;
 
 interface Props { projects: Project[]; stats: DashboardStats; selectedProjectId?: string | null; }
 
@@ -27,173 +16,102 @@ export default function Sidebar({ projects, stats, selectedProjectId = null }: P
   const rest = unique.filter(p => !p.isActive && Date.now() - p.lastActive >= 7 * 86_400_000);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontSize: '13px', color: 'var(--vscode-foreground)' }}>
-
+    <div className="flex flex-col h-full text-[13px] text-[var(--vscode-foreground)]">
       {/* Stats bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px',
-        padding: '8px 12px',
-        borderBottom: '1px solid var(--vscode-panel-border)',
-        opacity: 0.7, fontSize: '11px',
-      }}>
-        <span style={{
-          display: 'inline-block', width: '7px', height: '7px',
-          borderRadius: '50%', background: '#4ade80',
-          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-          flexShrink: 0,
-        }} />
-        <span>{stats?.activeSessionCount ?? 0} active &middot; {formatSidebarTokens(stats?.tokensTodayTotal ?? 0)} tokens today</span>
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--vscode-panel-border)] opacity-70 text-[11px]">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+        <span className="truncate">
+          {stats?.activeSessionCount ?? 0} active · {formatTokens(stats?.tokensTodayTotal ?? 0)} tokens · est. {formatCost(stats?.costTodayUsd ?? 0)} today
+        </span>
       </div>
 
       {/* Open Dashboard button */}
-      <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--vscode-panel-border)' }}>
+      <div className="px-3 py-1.5 border-b border-[var(--vscode-panel-border)]">
         <button
           onClick={() => vscode.postMessage({ type: 'openDashboard' })}
-          style={{
-            width: '100%', fontSize: '12px', padding: '4px 10px',
-            borderRadius: '2px', cursor: 'pointer',
-            background: 'var(--vscode-button-secondaryBackground, var(--vscode-input-background))',
-            color: 'var(--vscode-button-secondaryForeground, var(--vscode-foreground))',
-            border: '1px solid var(--vscode-button-border, var(--vscode-input-border, transparent))',
-            fontFamily: 'var(--vscode-font-family)',
-            fontWeight: 400,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground))')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'var(--vscode-button-secondaryBackground, var(--vscode-input-background))')}
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[var(--vscode-button-border,transparent)] bg-[var(--vscode-button-secondaryBackground,var(--vscode-input-background))] text-[var(--vscode-button-secondaryForeground,var(--vscode-foreground))] hover:bg-[var(--vscode-button-secondaryHoverBackground,var(--vscode-list-hoverBackground))] transition-colors"
         >
-          <span style={{ fontSize: '13px' }}>⊞</span>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M1 1h6v6H1V1zm8 0h6v6H9V1zM1 9h6v6H1V9zm8 0h6v6H9V9z" />
+          </svg>
           View Dashboard
         </button>
       </div>
 
       {/* Project list */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <Section label="Active" count={active.length} accent="#4ade80" show={active.length > 0}>
+      <div className="flex-1 overflow-y-auto">
+        <Section label="Active" count={active.length} accentClass="text-green-400" show={active.length > 0}>
           {active.map(p => <ProjectRow key={p.id} project={p} selected={selectedProjectId === p.id} />)}
         </Section>
-        <Section label="Recent" count={recent.length} accent="var(--vscode-textLink-foreground)" show={recent.length > 0}>
+        <Section label="Recent" count={recent.length} accentClass="text-[var(--vscode-textLink-foreground)]" show={recent.length > 0}>
           {recent.map(p => <ProjectRow key={p.id} project={p} selected={selectedProjectId === p.id} />)}
         </Section>
-        <Section label="Older" count={rest.length} accent="var(--vscode-descriptionForeground)" show={rest.length > 0}>
+        <Section label="Older" count={rest.length} accentClass="opacity-60" show={rest.length > 0}>
           {rest.map(p => <ProjectRow key={p.id} project={p} selected={selectedProjectId === p.id} />)}
         </Section>
       </div>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   );
 }
 
-function Section({ label, count, accent, show, children }: {
-  label: string; count: number; accent: string; show: boolean; children: React.ReactNode;
+function Section({ label, count, accentClass, show, children }: {
+  label: string; count: number; accentClass: string; show: boolean; children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(true);
-  const [hovered, setHovered] = React.useState(false);
   if (!show) { return null; }
   return (
     <div>
-      <div
+      <button
         onClick={() => setOpen(o => !o)}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: 'flex', alignItems: 'center',
-          padding: '4px 8px',
-          fontSize: '13px', fontWeight: 700, letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          color: accent,
-          background: hovered
-            ? 'var(--vscode-list-hoverBackground)'
-            : 'var(--vscode-sideBarSectionHeader-background, transparent)',
-          borderTop: '1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border))',
-          cursor: 'pointer',
-          userSelect: 'none',
-          transition: 'background 0.1s',
-        }}
+        className={`flex items-center w-full px-2 py-1 text-[13px] font-bold uppercase tracking-wide border-t border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-list-hoverBackground)] transition-colors ${accentClass}`}
       >
-        <span style={{
-          marginRight: '4px', fontSize: '9px', opacity: 0.7,
-          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-          display: 'inline-block', transition: 'transform 0.15s',
-        }}>▶</span>
-        <span style={{ flex: 1 }}>{label}</span>
-        <span style={{ opacity: 0.45, fontWeight: 400, fontSize: '11px' }}>{count}</span>
-      </div>
-      {open && children}
+        <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor" className={`mr-1 opacity-70 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true">
+          <path d="M6 4l4 4-4 4V4z" />
+        </svg>
+        <span className="flex-1 text-left">{label}</span>
+        <span className="opacity-45 font-normal text-[11px]">{count}</span>
+      </button>
+      {open && <div>{children}</div>}
     </div>
   );
 }
 
 function ProjectRow({ project: p, selected }: { project: Project; selected: boolean }) {
-  const [hovered, setHovered] = React.useState(false);
   return (
-    <button
-      type="button"
-      onClick={() => vscode.postMessage({ type: 'openProject', projectId: p.id })}
-      aria-current={selected ? 'page' : undefined}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '8px',
-        padding: '5px 12px',
-        cursor: 'pointer',
-        background: selected
-          ? 'var(--vscode-list-activeSelectionBackground)'
-          : hovered
-          ? 'var(--vscode-list-hoverBackground)'
-          : 'transparent',
-        color: selected
-          ? 'var(--vscode-list-activeSelectionForeground)'
-          : 'var(--vscode-foreground)',
-        borderLeft: selected ? '2px solid var(--vscode-textLink-foreground)' : '2px solid transparent',
-        paddingLeft: '10px',
-        transition: 'background 0.1s, border-color 0.1s',
-        width: '100%',
-        borderTop: 'none',
-        borderRight: 'none',
-        borderBottom: 'none',
-        textAlign: 'left',
-      }}
+    <div
+      className={`group flex items-center gap-2 pl-2.5 pr-2 py-1.5 border-l-2 transition-colors ${
+        selected
+          ? 'bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)] border-[var(--vscode-textLink-foreground)]'
+          : 'border-transparent hover:bg-[var(--vscode-list-hoverBackground)]'
+      }`}
     >
       {p.isActive ? (
-        <span style={{
-          width: '7px', height: '7px', borderRadius: '50%',
-          background: '#4ade80', flexShrink: 0,
-          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        }} />
+        <span className="w-[7px] h-[7px] rounded-full bg-green-400 animate-pulse shrink-0" />
       ) : (
-        <span style={{
-          width: '7px', height: '7px', borderRadius: '50%',
-          border: '1px solid currentColor', opacity: 0.3, flexShrink: 0,
-        }} />
+        <span className="w-[7px] h-[7px] rounded-full border border-current opacity-30 shrink-0" />
       )}
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {p.name}
-      </span>
-      {selected ? (
-        <span style={{
-          fontSize: '10px',
-          lineHeight: 1,
-          padding: '3px 6px',
-          borderRadius: '999px',
-          background: 'color-mix(in srgb, var(--vscode-textLink-foreground) 18%, transparent)',
-          color: 'inherit',
-          opacity: 0.9,
-          flexShrink: 0,
-        }}>
-          open
-        </span>
-      ) : (
-        <span style={{ fontSize: '11px', opacity: 0.4, flexShrink: 0 }}>
-          {p.isActive ? 'live' : sidebarTimeAgo(p.lastActive)}
-        </span>
-      )}
-    </button>
+      <button
+        type="button"
+        onClick={() => vscode.postMessage({ type: 'openProject', projectId: p.id })}
+        aria-current={selected ? 'page' : undefined}
+        className="flex-1 min-w-0 text-left"
+      >
+        <div className="truncate">{p.name}</div>
+        <div className="text-[11px] opacity-45 truncate">
+          {p.isActive ? 'live now' : timeAgo(p.lastActive)} · {formatTokens(p.totalTokens)} · {formatCost(p.totalCostUsd)}
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => vscode.postMessage({ type: 'openFolder', path: p.path })}
+        title="Reveal folder"
+        aria-label={`Reveal ${p.name} folder`}
+        className="opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-opacity shrink-0"
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M1.75 2A1.75 1.75 0 000 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0016 12.25V5.75A1.75 1.75 0 0014.25 4H7.5L6.2 2.4A1 1 0 005.42 2H1.75z" />
+        </svg>
+      </button>
+    </div>
   );
 }
