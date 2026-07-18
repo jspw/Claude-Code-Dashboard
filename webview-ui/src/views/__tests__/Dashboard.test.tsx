@@ -1,6 +1,7 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '../../__tests__/helpers/render-helpers';
+import { mockPostMessage } from '../../__tests__/setup';
 import {
   makeBudgetStatus,
   makeEfficiency,
@@ -16,6 +17,8 @@ import {
 import Dashboard from '../Dashboard';
 
 describe('Dashboard view', () => {
+  beforeEach(() => { mockPostMessage.mockClear(); });
+
   it('renders home data, filters and sorts projects, and shows analytics tab', () => {
     const active = makeProject({ id: 'a', name: 'Alpha', isActive: true, totalCostUsd: 1, sessionCount: 3 });
     const beta = makeProject({ id: 'b', name: 'Beta', isActive: false, totalCostUsd: 3, sessionCount: 1, lastActive: Date.now() - 1000 });
@@ -45,6 +48,13 @@ describe('Dashboard view', () => {
     expect(screen.getByText('Monthly budget 80% used')).toBeInTheDocument();
     expect(screen.getByText('Alpha')).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Adjust' }));
+    fireEvent.click(screen.getByText('Alpha'));
+    fireEvent.click(screen.getByText('Beta'));
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'setBudget' });
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'openProject', projectId: 'a' });
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'openProject', projectId: 'b' });
+
     fireEvent.change(screen.getByPlaceholderText('Filter by name…'), { target: { value: 'bet' } });
     expect(screen.getByText('Beta')).toBeInTheDocument();
     expect(screen.queryByText('Gamma')).not.toBeInTheDocument();
@@ -70,6 +80,8 @@ describe('Dashboard view', () => {
     // No data → empty state, no project list
     expect(screen.getByText('No Claude sessions found yet')).toBeInTheDocument();
     expect(screen.queryByText('Active now')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'refresh' });
 
     // Analytics still renders its empty chart states
     fireEvent.click(screen.getByText('Analytics'));
@@ -88,5 +100,25 @@ describe('Dashboard view', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Filter by name…'), { target: { value: 'zzz' } });
     expect(screen.getByText(/No projects match/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Set a monthly budget' }));
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'setBudget' });
+  });
+
+  it('renders and handles the welcome tour and budget progress controls', () => {
+    render(<Dashboard
+      projects={[makeProject({ id: 'p1', name: 'Project One' })]}
+      stats={makeStats({ totalProjects: 1, activeSessionCount: 0 })}
+      budgetStatus={makeBudgetStatus({ budgetUsd: 100, spentUsd: 25, pct: 0.25 })}
+      showTour
+    />);
+
+    expect(screen.getByText('Local & private')).toBeInTheDocument();
+    expect(screen.getByText('$25.00 spent')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss welcome' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Adjust' }));
+
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'dismissTour' });
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'setBudget' });
   });
 });

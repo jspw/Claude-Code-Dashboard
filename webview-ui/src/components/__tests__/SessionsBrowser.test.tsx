@@ -73,7 +73,48 @@ describe('SessionsBrowser', () => {
       ] } }));
     });
     expect(screen.getByText('1 match for “auth”')).toBeInTheDocument();
+    const highlightedResult = document.querySelector('mark')?.closest('button');
+    if (!highlightedResult) { throw new Error('Expected a highlighted prompt result'); }
+    fireEvent.click(highlightedResult);
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'openProject', projectId: 'p1', sessionId: 's1' });
     vi.useRealTimers();
+  });
+
+  it('refreshes, sorts, and limits sessions to the current month', () => {
+    render(<SessionsBrowser />);
+    sendAllSessions([
+      row({ id: 'recent', summary: 'Recent expensive', startTime: Date.now(), totalTokens: 100, costUsd: 5 }),
+      row({ id: 'tokens', summary: 'Most tokens', startTime: Date.now() - 1000, totalTokens: 50_000, costUsd: 1 }),
+      row({
+        id: 'old',
+        summary: null,
+        model: null,
+        startTime: 0,
+        totalTokens: 0,
+        costUsd: 0,
+        hasThinking: false,
+        isActiveSession: true,
+      }),
+    ]);
+
+    fireEvent.change(screen.getByDisplayValue('Most recent'), { target: { value: 'cost' } });
+    expect(screen.getByDisplayValue('Most expensive')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByDisplayValue('Most expensive'), { target: { value: 'tokens' } });
+    expect(screen.getByDisplayValue('Most tokens')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Most expensive this month' }));
+    expect(screen.getByText('2 of 3')).toBeInTheDocument();
+    expect(screen.queryByText('Untitled session')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Most expensive this month' }));
+    expect(screen.getByText('3 of 3')).toBeInTheDocument();
+    expect(screen.getByText('Untitled session')).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'stateUpdate' } }));
+    });
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'getAllSessions' });
   });
 
   it('shows an empty state when there are no sessions', () => {
@@ -86,5 +127,14 @@ describe('SessionsBrowser', () => {
     render(<HighlightedSnippet text="please fix the auth flow" query="auth" />);
     const mark = document.querySelector('mark');
     expect(mark?.textContent).toBe('auth');
+  });
+
+  it('leaves snippets unchanged for empty or missing queries', () => {
+    const { rerender } = render(<HighlightedSnippet text="plain text" query="" />);
+    expect(screen.getByText('plain text')).toBeInTheDocument();
+
+    rerender(<HighlightedSnippet text="plain text" query="missing" />);
+    expect(screen.getByText('plain text')).toBeInTheDocument();
+    expect(document.querySelector('mark')).toBeNull();
   });
 });
