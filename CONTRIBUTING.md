@@ -198,7 +198,17 @@ chore: bump vsce to 2.24
 
 Keep the subject line under 72 characters. Use the body for the "why" when needed.
 
-Running `npm install` in the repo configures a local `commit-msg` hook that rejects non-conventional commit subjects before Git creates the commit.
+Running `npm install` configures the repository's native Git hooks from `.githooks`:
+
+| Hook | Checks |
+|---|---|
+| `pre-commit` | Staged whitespace errors and TypeScript in the extension and webview |
+| `commit-msg` | Conventional Commit format and the 72-character subject limit |
+| `pre-push` | TypeScript, coverage thresholds, all tests, and the production build |
+
+Run `npm run hooks:install` to restore the hook configuration manually. Run `npm run verify:quick` for the pre-commit checks or `npm run verify` for the complete pre-push/CI suite.
+
+Git hooks are a fast local safeguard, while GitHub Actions repeats the commit validation and full verification for pull requests and pushes to `main` or `dev`.
 
 ---
 

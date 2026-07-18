@@ -118,14 +118,15 @@
     }
   },
   "scripts": {
-    "build": "node esbuild.js && cd webview-ui && npm run build",
+    "build": "node esbuild.js && npm --prefix webview-ui run build",
     "build:ext": "node esbuild.js",
-    "build:ui": "cd webview-ui && npm run build",
+    "build:ui": "npm --prefix webview-ui run build",
     "watch:ext": "node esbuild.js --watch",
-    "watch:ui": "cd webview-ui && npm run dev",
+    "watch:ui": "npm --prefix webview-ui run dev",
     "prepare": "node scripts/setup-git-hooks.mjs",
+    "hooks:install": "node scripts/setup-git-hooks.mjs",
     "typecheck": "tsc --noEmit",
-    "typecheck:all": "npm run typecheck && cd webview-ui && npm run typecheck",
+    "typecheck:all": "npm run typecheck && npm --prefix webview-ui run typecheck",
     "vscode:prepublish": "npm run build",
     "vscode:uninstall": "node ./dist/uninstall.js",
     "package": "vsce package",
@@ -134,7 +135,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:all": "npm test && cd webview-ui && npm test"
+    "test:all": "npm test && npm --prefix webview-ui test",
+    "verify:quick": "npm run typecheck:all",
+    "verify": "npm run verify:quick && npm run test:coverage && npm --prefix webview-ui run test:coverage && npm run build"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

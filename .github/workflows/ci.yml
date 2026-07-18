@@ -3,10 +3,21 @@ name: CI
 on:
   pull_request:
     branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,10 +32,29 @@ jobs:
             webview-ui/package-lock.json
 
       - name: Validate PR title
-        run: node scripts/validate-commit-message.mjs --message "${{ github.event.pull_request.title }}" --source "pull request title"
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: npm run lint:commit-msg -- --message "$PR_TITLE" --source "pull request title"
 
       - name: Validate PR commit messages
-        run: node scripts/validate-commit-range.mjs "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+        if: github.event_name == 'pull_request'
+        env:
+          COMMIT_RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+        run: npm run lint:commits -- "$COMMIT_RANGE"
+
+      - name: Validate pushed commit messages
+        if: github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          if git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            COMMIT_RANGE="$BEFORE_SHA..$AFTER_SHA"
+          else
+            COMMIT_RANGE="$AFTER_SHA"
+          fi
+          npm run lint:commits -- "$COMMIT_RANGE"
 
       - name: Install root deps
         run: npm ci
@@ -33,19 +63,5 @@ jobs:
         run: npm ci
         working-directory: webview-ui
 
-      - name: Type check
-        run: npx tsc --noEmit
-
-      - name: Type check webview-ui
-        run: npx tsc --noEmit
-        working-directory: webview-ui
-
-      - name: Run backend tests
-        run: npx vitest run --coverage
-
-      - name: Run UI tests
-        run: npx vitest run --coverage
-        working-directory: webview-ui
-
-      - name: Build
-        run: npm run build
+      - name: Verify project
+        run: npm run verify
