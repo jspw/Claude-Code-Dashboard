@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPanel } from '../DashboardPanel';
 import { DashboardStore, LiveEvent, ProjectedCost, StreakData, EfficiencyStats, WeeklyRecap } from '../../store/DashboardStore';
 
-type DashboardMessage = { type: 'openProject'; projectId: string };
+type DashboardMessage =
+  | { type: 'openProject'; projectId: string; sessionId?: string }
+  | { type: 'getAllSessions' }
+  | { type: 'searchPrompts'; query: string };
 type DashboardStoreMock = {
   on: ReturnType<typeof vi.fn>;
   getProjects: ReturnType<typeof vi.fn>;
@@ -12,7 +15,6 @@ type DashboardStoreMock = {
   getUsageByProject: ReturnType<typeof vi.fn>;
   getHeatmapData: ReturnType<typeof vi.fn>;
   getPromptPatterns: ReturnType<typeof vi.fn>;
-  getAllPrompts: ReturnType<typeof vi.fn>;
   getToolUsageStats: ReturnType<typeof vi.fn>;
   getHotFiles: ReturnType<typeof vi.fn>;
   getProjectedCost: ReturnType<typeof vi.fn>;
@@ -22,6 +24,8 @@ type DashboardStoreMock = {
   getRecentFileChanges: ReturnType<typeof vi.fn>;
   getProductivityByHour: ReturnType<typeof vi.fn>;
   getMonthlyUsage: ReturnType<typeof vi.fn>;
+  getAllSessionRows: ReturnType<typeof vi.fn>;
+  searchPrompts: ReturnType<typeof vi.fn>;
 };
 type WebviewPanelLike = {
   webview: {
@@ -56,7 +60,6 @@ describe('DashboardPanel', () => {
       getUsageByProject: vi.fn(() => []),
       getHeatmapData: vi.fn(() => []),
       getPromptPatterns: vi.fn(() => []),
-      getAllPrompts: vi.fn(() => []),
       getToolUsageStats: vi.fn(() => []),
       getHotFiles: vi.fn(() => []),
       getProjectedCost: vi.fn(() => null as unknown as ProjectedCost),
@@ -66,6 +69,8 @@ describe('DashboardPanel', () => {
       getRecentFileChanges: vi.fn(() => []),
       getProductivityByHour: vi.fn(() => []),
       getMonthlyUsage: vi.fn(() => ({ tokens: 0, costUsd: 2 })),
+      getAllSessionRows: vi.fn(() => [{ id: 's1', projectId: 'p1', projectName: 'Alpha' }]),
+      searchPrompts: vi.fn(() => [{ sessionId: 's1', snippet: 'fix auth' }]),
     };
     vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({ get: vi.fn(() => 10) } as unknown as vscode.WorkspaceConfiguration);
     vi.mocked(vscode.window.createWebviewPanel).mockImplementation(() => ({
@@ -80,19 +85,27 @@ describe('DashboardPanel', () => {
       onDidDispose: vi.fn(),
     }) as unknown as vscode.WebviewPanel);
 
-    DashboardPanel.createOrShow(
-      { extensionUri: vscode.Uri.file('/ext') } as Pick<vscode.ExtensionContext, 'extensionUri'> as vscode.ExtensionContext,
-      store as unknown as DashboardStore,
-    );
+    const context = {
+      extensionUri: vscode.Uri.file('/ext'),
+      globalState: { get: vi.fn(() => false), update: vi.fn(() => Promise.resolve()) },
+    } as unknown as vscode.ExtensionContext;
+    DashboardPanel.createOrShow(context, store as unknown as DashboardStore);
     const panel = vi.mocked(vscode.window.createWebviewPanel).mock.results[0].value as WebviewPanelLike;
 
     updatedHandler();
     liveHandler({ type: 'tool_use', timestamp: 1 });
     messageHandler({ type: 'openProject', projectId: 'p1' });
+    messageHandler({ type: 'openProject', projectId: 'p1', sessionId: 's9' });
+    messageHandler({ type: 'getAllSessions' } as unknown as DashboardMessage);
+    messageHandler({ type: 'searchPrompts', query: 'auth' } as unknown as DashboardMessage);
 
     expect(panel.webview.html).toContain('__INITIAL_VIEW__ = "dashboard"');
     expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'stateUpdate' }));
     expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: 'liveEvent', payload: { type: 'tool_use', timestamp: 1 } });
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('claudeDashboard.openProject', 'p1');
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('claudeDashboard.openProject', 'p1', undefined);
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('claudeDashboard.openProject', 'p1', 's9');
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'allSessions' }));
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'promptSearchResults', query: 'auth' }));
+    expect(store.searchPrompts).toHaveBeenCalledWith('auth');
   });
 });

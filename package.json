@@ -69,6 +69,16 @@
         "title": "Refresh",
         "category": "Claude Code Dashboard",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeDashboard.enableLiveTracking",
+        "title": "Enable Live Tracking (Add Hooks)",
+        "category": "Claude Code Dashboard"
+      },
+      {
+        "command": "claudeDashboard.disableLiveTracking",
+        "title": "Disable Live Tracking (Remove Hooks)",
+        "category": "Claude Code Dashboard"
       }
     ],
     "menus": {
@@ -92,6 +102,17 @@
           "type": "number",
           "default": 0,
           "description": "Monthly cost budget in USD. Alerts fire at 80% and 100%. Set to 0 to disable."
+        },
+        "claudeDashboard.statusBar": {
+          "type": "string",
+          "enum": ["compact", "full", "off"],
+          "default": "compact",
+          "description": "Status bar display: compact (active count + today's cost), full (adds label and tokens), or off."
+        },
+        "claudeDashboard.weeklyDigest": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a weekly usage digest notification (fires at most once every 7 days)."
         }
       }
     }
@@ -106,6 +127,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:all": "npm run typecheck && cd webview-ui && npm run typecheck",
     "vscode:prepublish": "npm run build",
+    "vscode:uninstall": "node ./dist/uninstall.js",
     "package": "vsce package",
     "lint:commit-msg": "node scripts/validate-commit-message.mjs",
     "lint:commits": "node scripts/validate-commit-range.mjs",

@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { DailyUsage } from '../types';
+import { formatCost } from '../utils/format';
 
 interface Props {
   data: DailyUsage[];
@@ -43,7 +44,7 @@ export function UsageLineChartTooltip({ active, payload, label }: { active?: boo
     }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
       <div>{formatUsageTokens(d.tokens)} tokens</div>
-      <div style={{ opacity: 0.6 }}>${d.costUsd.toFixed(4)}</div>
+      <div style={{ opacity: 0.6 }}>{formatCost(d.costUsd)}</div>
     </div>
   );
 }

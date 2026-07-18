@@ -42,9 +42,9 @@ Search for **Claude Code Dashboard** in the VS Code Extensions panel, or install
 
 1. Click the **pulse icon** in the VS Code activity bar to open the Claude Projects sidebar.
 2. The full dashboard opens automatically to the right.
-3. On first run you'll be prompted to enable real-time hooks — choose **"Yes, configure hooks"** for live session tracking. A backup of `~/.claude/settings.json` is made first.
+3. On first run you'll be asked once whether to enable live tracking (adds two hooks to `~/.claude/settings.json`; a backup is made first). Choose **Enable**, **Not now**, or **Never** — your choice is remembered and the dialog never re-asks.
 
-> Skipping hooks is fine — the dashboard still shows all historical data. You only lose the live "Claude is running" indicator.
+> Skipping hooks is fine — the dashboard still shows all historical data. You only lose the live "Claude is running" indicator. Toggle later anytime with **Claude Code Dashboard: Enable Live Tracking** / **Disable Live Tracking** in the command palette. Uninstalling the extension automatically removes the hooks and event file.
 
 ---
 
@@ -54,7 +54,6 @@ Search for **Claude Code Dashboard** in the VS Code Extensions panel, or install
 |---|---|
 | **Overview** | Weekly recap, today's tokens & estimated cost, active sessions, full project list |
 | **Charts** | 30-day token trend, usage by project, projected monthly estimated cost |
-| **Search** | Full-text search across every prompt you've ever sent to Claude |
 | **Insights** | Usage heatmap, tool breakdown, productivity by hour, hot files |
 
 **Project detail view** — click any project to see its full session history, turn-by-turn conversation, token breakdown, estimated cost, files touched, CLAUDE.md, and MCP servers. Export to JSON or CSV any time.
@@ -63,7 +62,7 @@ Search for **Claude Code Dashboard** in the VS Code Extensions panel, or install
 
 - Token counts come from local Claude session logs in `~/.claude/projects/`.
 - Displayed `totalTokens` exclude cache-read tokens, which Claude may reuse heavily across long sessions.
-- Cost is a local estimate based on detected model family, a static pricing table, and parsed token usage.
+- Cost is a local estimate based on detected model family, a static pricing table (last updated 2026-06), and parsed token usage. Sessions on unknown models are estimated at Sonnet rates and marked `est.*` in the UI.
 - Aggregate cost views include subagent-attributed cost when Claude spawns subagents.
 - Estimated cost may differ from Anthropic billing, invoices, or future pricing changes.
 
@@ -86,7 +85,7 @@ Search for **Claude Code Dashboard** in VS Code settings (`Cmd+,` / `Ctrl+,`).
 — Verify `~/.claude/projects/` exists, then run **Claude Code Dashboard: Refresh** from the command palette. Check the Output panel (select "Claude Code Dashboard") for errors.
 
 **Sessions not updating in real time**
-— Confirm hooks were configured at first run. Check `~/.claude/settings.json` for entries referencing `.dashboard-events.jsonl`. The file watcher fallback still updates within ~300ms.
+— Run **Claude Code Dashboard: Enable Live Tracking** from the command palette, then check `~/.claude/settings.json` for entries referencing `.dashboard-events.jsonl`. The file watcher fallback still updates within ~300ms.
 
 **Cost numbers look off**
 — Cost is estimated locally from parsed token usage, detected model family, and a static pricing table. Cache read tokens are tracked separately and excluded from `totalTokens`, but still contribute to estimated cost.
@@ -102,7 +101,10 @@ The extension only reads files in `~/.claude/` and your project directories. No 
 
 - `~/.claude/settings.json` — hook config (with your consent; backup made first)
 - `~/.claude/.dashboard-events.jsonl` — live events from the injected hooks
-- `~/.claude/settings.json.bak` — backup before hook injection
+- `~/.claude/.dashboard-live` — marker file that arms the hooks (deleting it disables them instantly)
+- `~/.claude/settings.json.bak` — backup before hook injection or removal
+
+Disabling live tracking (or uninstalling the extension) removes the hooks, the marker, and the event file.
 
 ---
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { ProjectStats } from '../types';
-import { formatTokens } from '../utils/format';
+import { formatTokens, formatCost } from '../utils/format';
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
@@ -13,7 +13,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 export function formatWeeklyTooltipValue(value: number, name: string): [string, string] {
-  return [name === 'tokens' ? formatTokens(value) : `$${value.toFixed(4)}`, name];
+  return [name === 'tokens' ? formatTokens(value) : formatCost(value), name];
 }
 
 export default function WeeklyStatsTab({ projectStats }: { projectStats?: ProjectStats }) {
@@ -28,7 +28,7 @@ export default function WeeklyStatsTab({ projectStats }: { projectStats?: Projec
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Sessions this week" value={String(sessions)} />
         <StatCard label="Tokens this week" value={formatTokens(tokens)} />
-        <StatCard label="Est. cost this week" value={`$${costUsd.toFixed(3)}`} />
+        <StatCard label="Est. cost this week" value={formatCost(costUsd)} />
       </div>
       <p className="text-xs opacity-45">
         Costs are estimated from local Claude session logs and detected model pricing.
@@ -63,7 +63,7 @@ export default function WeeklyStatsTab({ projectStats }: { projectStats?: Projec
               <span className="font-medium w-12 shrink-0">{day.date}</span>
               <span className="opacity-60 w-20 shrink-0">{day.sessions} session{day.sessions !== 1 ? 's' : ''}</span>
               <span className="opacity-60 w-20 shrink-0">{formatTokens(day.tokens)} tok</span>
-              <span className="opacity-60">${day.costUsd.toFixed(4)}</span>
+              <span className="opacity-60">{formatCost(day.costUsd)}</span>
               {day.tokens > 0 && (
                 <div className="flex-1 h-1.5 bg-[var(--vscode-input-background)] rounded overflow-hidden ml-2">
                   <div

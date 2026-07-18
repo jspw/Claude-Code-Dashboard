@@ -80,7 +80,9 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 | `parsers/SettingsParser.ts` | Reads `CLAUDE.md`, `.claude/settings.json`, `.mcp.json`, `.claude/commands/*.md` |
 | `watchers/FileWatcher.ts` | `fs.watch()` on `~/.claude/projects/*.jsonl`, debounces 300ms, calls `store.onFileChanged()` |
 | `watchers/EventWatcher.ts` | Polls `~/.claude/.dashboard-events.jsonl` every 500ms for live tool_use/session_stop events |
-| `hooks/HookManager.ts` | Injects PostToolUse/Stop hooks into `~/.claude/settings.json` (with user consent) |
+| `hooks/HookManager.ts` | Injects/removes PostToolUse+Stop hooks in `~/.claude/settings.json` (with user consent). Hooks are armed by a `~/.claude/.dashboard-live` marker and no-op without it |
+| `hooks/stripDashboardHooks.ts` | Pure helper that strips dashboard hook entries from a parsed settings object (shared with uninstall) |
+| `uninstall.ts` | `vscode:uninstall` script — removes hooks, marker, and event file after uninstall |
 | `alerts/AlertManager.ts` | Budget alerts (80%/100%) and weekly Monday digest |
 | `webviews/DashboardPanel.ts` | Singleton webview for main dashboard. `buildState()` assembles all analytics |
 | `webviews/ProjectPanel.ts` | Per-project webview (`Map<projectId, panel>`). Strips turns from sessions (loaded on demand via `getSessionTurns` message) |
@@ -103,42 +105,46 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 
 | View | File | Description |
 |---|---|---|
-| Dashboard | `views/Dashboard.tsx` | 3 tabs: Overview (recap, stats, projects), Charts (usage, cost), Insights (heatmap, efficiency, tools, hot files) |
-| ProjectDetail | `views/ProjectDetail.tsx` | 12 tabs: Sessions, Weekly, CLAUDE.md, Commands, Tools, MCP Servers, Subagents, Files, Memory, Todos, Commits, Settings |
+| Dashboard | `views/Dashboard.tsx` | 3 tabs: Home (budget, stats, weekly recap, projects), Analytics (spend/patterns/tools/efficiency with a 7/30/90-day range control), Sessions (cross-project browser + prompt search) |
+| ProjectDetail | `views/ProjectDetail.tsx` | 5 tabs: Overview (stat cards, recent sessions, quick links), Sessions (day-grouped list + subagent toggle + detail), Activity (usage trend, files, tools, commits), Setup (CLAUDE.md, memory, commands, MCP, automation), Work (plans + todos — hidden when both empty) |
 | Sidebar | `views/Sidebar.tsx` | Compact project list grouped by Active/Recent/Older with stats |
 
 **Components (all in `components/`):**
 
 | Component | Used in |
 |---|---|
-| `SessionList.tsx`, `SessionDetail.tsx` | ProjectDetail → Sessions tab |
-| `WeeklyStatsTab.tsx` | ProjectDetail → Weekly tab |
-| `MarkdownView.tsx` (+ `CommandBlock`) | ProjectDetail → CLAUDE.md & Commands tabs |
-| `ToolUsageBar.tsx` | ProjectDetail → Tools tab, Dashboard → Insights |
-| `UsageLineChart.tsx` | Dashboard → Charts (30-day line) |
-| `ProjectBarChart.tsx` | Dashboard → Charts (by project) |
-| `HeatmapGrid.tsx` | Dashboard → Insights |
-| `PatternChart.tsx` | Dashboard → Insights |
-| `ProductivityChart.tsx` | Dashboard → Insights |
-| `EfficiencyCards.tsx` | Dashboard → Insights |
-| `HotFilesList.tsx` | Dashboard → Insights |
-| `RecentChanges.tsx` | Dashboard → Insights |
-| `ProjectCard.tsx` | Dashboard → Overview |
-| `PromptSearch.tsx` | Dashboard → Search tab |
-| `ActiveSessionCard.tsx`, `LiveSessionBanner.tsx` | Dashboard → Overview |
-| `ActivityFeed.tsx` | Dashboard |
+| `SessionDetail.tsx` (+ `modelLabel`, `modelBadgeColor`) | ProjectDetail → Sessions tab; includes the copy-resume-command button |
+| `SessionsBrowser.tsx` | Dashboard → Sessions tab (cross-project rows + backend-served prompt search) |
+| `WeeklyStatsTab.tsx` | ProjectDetail → Activity (usage trend) |
+| `MarkdownView.tsx` (+ `CommandBlock`) | ProjectDetail → Setup (CLAUDE.md, memory, commands) |
+| `ToolUsageBar.tsx` | ProjectDetail → Activity, Dashboard → Analytics |
+| `UsageLineChart.tsx` | Dashboard → Analytics (30-day line) |
+| `ProjectBarChart.tsx` | Dashboard → Analytics (by project) |
+| `HeatmapGrid.tsx` | Dashboard → Analytics |
+| `PatternChart.tsx` | Dashboard → Analytics |
+| `ProductivityChart.tsx` | Dashboard → Analytics |
+| `EfficiencyCards.tsx` | Dashboard → Analytics |
+| `HotFilesList.tsx` | Dashboard → Analytics |
+| `RecentChanges.tsx` | Dashboard → Analytics |
+| `PromptSearch.tsx` | Deprecated (superseded by `SessionsBrowser`); pending deletion |
 
 ### Message Protocol
 
 **Backend → Webview:**
-- `{ type: 'stateUpdate', payload: {...} }` — full or partial state refresh
-- `{ type: 'liveEvent', payload: { type, tool?, projectId?, sessionId?, timestamp } }` — real-time hook events
+- `{ type: 'stateUpdate', payload: {...} }` — full or partial state refresh (dashboard payload includes `showTour`)
+- `{ type: 'liveEvent', payload: { type, tool?, projectId?, sessionId?, timestamp } }` — real-time hook events (App.tsx ignores these for state; the store follows each with a debounced `stateUpdate`)
 - `{ type: 'sessionTurns', sessionId, turns[] }` — lazy-loaded turn data
+- `{ type: 'allSessions', sessions[] }` — cross-project `SessionRow[]` for the dashboard Sessions tab
+- `{ type: 'promptSearchResults', query, results[] }` — backend-served prompt search
+- `{ type: 'selectSession', sessionId }` — deep-link: select a session in an already-open ProjectPanel
 
 **Webview → Backend:**
-- `{ type: 'openDashboard' }` / `{ type: 'openProject', projectId }`
+- `{ type: 'openDashboard' }` / `{ type: 'openProject', projectId, sessionId? }`
 - `{ type: 'getSessionTurns', sessionId }` — triggers `sessionTurns` response
+- `{ type: 'getAllSessions' }` / `{ type: 'searchPrompts', query }` — dashboard Sessions tab
 - `{ type: 'exportSessions', format: 'json' | 'csv' }`
+- `{ type: 'setBudget' }` — opens the budget input box; `{ type: 'dismissTour' }`; `{ type: 'refresh' }`
+- `{ type: 'openFile', path }` / `{ type: 'openFolder', path }` — every rendered file/folder is a door
 
 ### State Management
 
@@ -160,7 +166,7 @@ Session turns are **lazy-loaded**: initial state ships sessions with `turns: []`
 - **ClaudeCommit** — `{ hash, shortHash, author, date, subject, filesChanged }`
 - **HookConfig** — `{ event, matcher?, command }`
 
-Other types: `DailyUsage`, `ProjectUsage`, `HeatmapCell`, `PatternCount`, `ToolUsageStat`, `HotFile`, `ProjectedCost`, `StreakData`, `EfficiencyStats`, `WeeklyRecap`, `RecentFileChange`, `ProductivityHour`, `BudgetStatus`, `ProjectFile`, `ProjectToolCall`, `WeeklyProjectStats`, `McpServer`, `PromptSearchResult`
+Other types: `DailyUsage`, `ProjectUsage`, `HeatmapCell`, `PatternCount`, `ToolUsageStat`, `HotFile`, `ProjectedCost`, `StreakData`, `EfficiencyStats`, `WeeklyRecap`, `RecentFileChange`, `ProductivityHour`, `BudgetStatus`, `ProjectFile`, `ProjectToolCall`, `WeeklyProjectStats`, `McpServer`, `PromptSearchResult`, `SessionRow`. Session/SessionRow also carry `pricingConfidence: 'exact' | 'fallback'`.
 
 ### How to Add a New ProjectDetail Tab
 
@@ -180,7 +186,7 @@ Other types: `DailyUsage`, `ProjectUsage`, `HeatmapCell`, `PatternCount`, `ToolU
 2. **Add to `DashboardPanel.buildState()`** return object
 3. **Add interface** to `types.ts`, add prop to `Dashboard.tsx`
 4. **Add to `App.tsx`** dashboard destructuring
-5. **Render** in the appropriate tab (Overview/Charts/Insights) in `Dashboard.tsx`
+5. **Render** in the appropriate tab (Home/Analytics/Sessions) in `Dashboard.tsx`
 
 ### Testing
 

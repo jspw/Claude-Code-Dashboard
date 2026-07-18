@@ -1,5 +1,6 @@
 import React from 'react';
 import { HeatmapCell } from '../types';
+import { formatTokens } from '../utils/format';
 
 interface Props {
   data: HeatmapCell[];
@@ -15,11 +16,7 @@ function getColor(tokens: number, maxTokens: number): string {
   return `rgba(99,102,241,${alpha.toFixed(2)})`;
 }
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
+
 
 export default function HeatmapGrid({ data }: Props) {
   const maxTokens = Math.max(...data.map(d => d.tokens), 1);

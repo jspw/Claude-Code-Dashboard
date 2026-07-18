@@ -9,6 +9,7 @@ import {
   Cell,
 } from 'recharts';
 import { ProjectUsage } from '../types';
+import { formatCost } from '../utils/format';
 
 interface Props {
   data: ProjectUsage[];
@@ -43,7 +44,7 @@ export function ProjectBarChartTooltip({ active, payload }: { active?: boolean; 
     }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{d.name}</div>
       <div>{formatProjectBarTokens(d.tokens)} tokens</div>
-      <div style={{ opacity: 0.6 }}>${d.costUsd.toFixed(4)}</div>
+      <div style={{ opacity: 0.6 }}>{formatCost(d.costUsd)}</div>
     </div>
   );
 }

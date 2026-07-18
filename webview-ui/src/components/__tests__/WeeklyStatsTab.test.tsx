@@ -51,6 +51,6 @@ describe('WeeklyStatsTab', () => {
 
     expect(screen.getByText('No activity in the last 7 days.')).toBeInTheDocument();
     expect(formatWeeklyTooltipValue(1250, 'tokens')).toEqual(['1.3k', 'tokens']);
-    expect(formatWeeklyTooltipValue(0.125, 'costUsd')).toEqual(['$0.1250', 'costUsd']);
+    expect(formatWeeklyTooltipValue(0.125, 'costUsd')).toEqual(['$0.125', 'costUsd']);
   });
 });

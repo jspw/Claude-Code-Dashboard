@@ -28,7 +28,7 @@ describe('UsageLineChart', () => {
 
     expect(screen.getByText('1/20')).toBeInTheDocument();
     expect(screen.getByText('1k tokens')).toBeInTheDocument();
-    expect(screen.getByText('$0.1250')).toBeInTheDocument();
+    expect(screen.getByText('$0.125')).toBeInTheDocument();
     expect(formatUsageTokens(2_000_000)).toBe('2.0M');
     expect(formatUsageTokens(250)).toBe('250');
     expect(render(<UsageLineChartTooltip />).container).toBeEmptyDOMElement();

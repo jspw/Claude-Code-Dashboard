@@ -1,6 +1,6 @@
 import React from 'react';
 import { Session, Turn, ToolCall, TurnAttachment } from '../types';
-import { formatTokens, formatDuration } from '../utils/format';
+import { formatTokens, formatCost, formatDuration } from '../utils/format';
 import { toolColor } from '../utils/toolColor';
 import { MarkdownView } from './MarkdownView';
 
@@ -8,7 +8,13 @@ import { MarkdownView } from './MarkdownView';
 
 type SystemEvent =
   | { kind: 'command'; name: string; args?: string }
-  | { kind: 'stdout'; text: string };
+  | { kind: 'stdout'; text: string }
+  | { kind: 'skill'; name: string; body: string };
+
+// Loading a skill injects its full instructions as a "user" message that begins
+// with this marker. These can be hundreds of KB — surface them as collapsed
+// context rather than a user turn.
+const SKILL_INJECTION_PREFIX = 'Base directory for this skill:';
 
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
@@ -18,6 +24,13 @@ export function parseSystemContent(content: string): SystemEvent | 'skip' | null
   const t = content.trim();
   if (/<local-command-caveat>/i.test(t) && !t.replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/gi, '').trim()) {
     return 'skip';
+  }
+  if (t.startsWith(SKILL_INJECTION_PREFIX)) {
+    const nl = t.indexOf('\n');
+    const firstLine = nl === -1 ? t : t.slice(0, nl);
+    const dir = firstLine.slice(SKILL_INJECTION_PREFIX.length).trim();
+    const name = dir.split('/').filter(Boolean).pop() || 'skill';
+    return { kind: 'skill', name, body: t.slice(firstLine.length).trim() };
   }
   const cmdMatch = t.match(/<command-name>([^<]+)<\/command-name>/);
   if (cmdMatch) {
@@ -46,12 +59,51 @@ function SystemEventRow({ event }: { event: SystemEvent }) {
       </div>
     );
   }
+  if (event.kind === 'stdout') {
+    return (
+      <div className="flex items-center gap-1.5 text-xs opacity-35 py-0.5 pl-1 font-mono">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+          <path d="M2 6h7M6.5 3.5 9 6l-2.5 2.5" />
+        </svg>
+        <span>{event.text}</span>
+      </div>
+    );
+  }
+  return null;
+}
+
+// Skill instructions injected as a "user" turn — rendered as collapsed context.
+function SkillContextRow({ event }: { event: Extract<SystemEvent, { kind: 'skill' }> }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const body = event.body;
+  const shown = body.length > CONTENT_RENDER_CAP ? body.slice(0, CONTENT_RENDER_CAP) : body;
+  const hidden = body.length - shown.length;
   return (
-    <div className="flex items-center gap-1.5 text-xs opacity-35 py-0.5 pl-1 font-mono">
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-        <path d="M2 6h7M6.5 3.5 9 6l-2.5 2.5" />
-      </svg>
-      <span>{event.text}</span>
+    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden opacity-80">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors text-left"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-60" aria-hidden="true">
+          <path d="M0 1.75A.75.75 0 01.75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0111.006 1h4.245a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-4.507a2.25 2.25 0 00-1.591.659l-.622.621a.75.75 0 01-1.06 0l-.622-.621A2.25 2.25 0 005.258 13H.75a.75.75 0 01-.75-.75V1.75zm8.755 3a2.25 2.25 0 012.25-2.25H14.5v9h-3.757c-.71 0-1.4.201-1.992.572l.004-7.322zm-1.504 7.324l.004-5.073-.002-2.253A2.25 2.25 0 005.003 2.5H1.5v9h3.757a3.75 3.75 0 011.994.574z" />
+        </svg>
+        <span className="text-[11px] uppercase tracking-wider opacity-50 font-semibold">Skill loaded</span>
+        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] truncate max-w-[200px]">{event.name}</span>
+        <span className="ml-auto text-xs opacity-40 shrink-0">{expanded ? 'Hide' : 'Show'} context</span>
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`shrink-0 opacity-40 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true">
+          <path d="M8 11L3 6l1.06-1.06L8 8.88l3.94-3.94L13 6z" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 border-t border-[var(--vscode-panel-border)]">
+          <MarkdownView content={shown} compact />
+          {hidden > 0 && (
+            <div className="text-xs opacity-40 mt-1">
+              {hidden.toLocaleString()} more chars hidden — open the session file to see the full skill.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -199,10 +251,24 @@ function AttachmentChips({ attachments }: { attachments: TurnAttachment[] }) {
   );
 }
 
+// Injected context (skill listings, pasted files) can make a single turn
+// hundreds of KB long, which explodes into thousands of DOM nodes and freezes
+// the webview. Render a bounded preview by default, expandable up to a hard cap.
+const CONTENT_PREVIEW_LIMIT = 4000;
+const CONTENT_RENDER_CAP = 40000;
+
 function TurnBlock({ turn }: { turn: Turn }) {
   const [collapsed, setCollapsed] = React.useState(false);
+  const [showFull, setShowFull] = React.useState(false);
   const content = turn.content?.trim() ?? '';
   const hasContent = content.length > 0;
+  const isLongContent = content.length > CONTENT_PREVIEW_LIMIT;
+  const displayContent = !isLongContent
+    ? content
+    : showFull
+      ? content.slice(0, CONTENT_RENDER_CAP)
+      : content.slice(0, CONTENT_PREVIEW_LIMIT);
+  const cappedHidden = isLongContent && showFull ? content.length - CONTENT_RENDER_CAP : 0;
   const hasTools = turn.toolCalls.length > 0;
   const attachments = turn.attachments ?? [];
 
@@ -211,6 +277,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
   if (turn.role === 'user' && hasContent) {
     const sys = parseSystemContent(content);
     if (sys === 'skip') return null;
+    if (sys && sys.kind === 'skill') return <SkillContextRow event={sys} />;
     if (sys) return <SystemEventRow event={sys} />;
   }
 
@@ -273,7 +340,22 @@ function TurnBlock({ turn }: { turn: Turn }) {
             {attachments.length > 0 && <AttachmentChips attachments={attachments} />}
             {hasContent && (
               <div className="px-3 pb-1">
-                <MarkdownView content={content} compact highlightMentions={isUser} />
+                <MarkdownView content={displayContent} compact highlightMentions={isUser} />
+                {isLongContent && (
+                  <div className="mt-1">
+                    <button
+                      onClick={() => setShowFull(v => !v)}
+                      className="text-xs px-2 py-0.5 rounded border border-[var(--vscode-panel-border)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors"
+                    >
+                      {showFull ? 'Show less' : `Show full message (${content.length.toLocaleString()} chars)`}
+                    </button>
+                    {cappedHidden > 0 && (
+                      <span className="ml-2 text-xs opacity-40">
+                        {cappedHidden.toLocaleString()} more chars hidden — use copy to get the full text
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {regularCalls.length > 0 && (
@@ -303,6 +385,8 @@ function TurnBlock({ turn }: { turn: Turn }) {
 
 export function modelLabel(model: string | null): string | null {
   if (!model) return null;
+  if (model.includes('fable')) return 'Fable';
+  if (model.includes('mythos')) return 'Mythos';
   if (model.includes('opus')) return 'Opus';
   if (model.includes('haiku')) return 'Haiku';
   if (model.includes('sonnet')) return 'Sonnet';
@@ -311,9 +395,35 @@ export function modelLabel(model: string | null): string | null {
 
 export function modelBadgeColor(model: string | null): string {
   if (!model) return '';
+  if (model.includes('fable') || model.includes('mythos')) return 'text-pink-400 bg-pink-500/15';
   if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
   if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';
   return 'text-blue-400 bg-blue-500/15';
+}
+
+function ResumeButton({ sessionId }: { sessionId: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const command = `claude --resume ${sessionId}`;
+  const copy = () => {
+    navigator.clipboard.writeText(command).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <button
+      onClick={copy}
+      title={copied ? 'Copied!' : `Copy: ${command}`}
+      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[var(--vscode-button-background)] text-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-background)] hover:text-[var(--vscode-button-foreground)] transition-colors"
+    >
+      {copied ? (
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" /></svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2a6 6 0 105.2 3H11a.75.75 0 010-1.5h3.25A.75.75 0 0115 4.25V7.5a.75.75 0 01-1.5 0V6.06A7.5 7.5 0 108 .5a.75.75 0 010 1.5z" /></svg>
+      )}
+      {copied ? 'Copied resume command' : 'Copy resume command'}
+    </button>
+  );
 }
 
 export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
@@ -333,6 +443,9 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <ResumeButton sessionId={session.id} />
+      </div>
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
         <button
           type="button"
@@ -359,7 +472,10 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
         <span>·</span>
         <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
         {modelLabel(session.model) && (
-          <span className={`font-semibold px-1.5 py-0.5 rounded opacity-100 ${modelBadgeColor(session.model)}`}>
+          <span
+            title={session.model ?? undefined}
+            className={`font-semibold px-1.5 py-0.5 rounded opacity-100 ${modelBadgeColor(session.model)}`}
+          >
             {modelLabel(session.model)}
           </span>
         )}
@@ -370,7 +486,13 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
           {formatTokens(session.totalTokens)} tokens
         </span>
         <span>·</span>
-        <span title="Estimated from local token usage, detected model, and static pricing data">est. ${totalCost.toFixed(4)}</span>
+        <span
+          title={session.pricingConfidence === 'fallback'
+            ? 'Model unknown or not in the pricing table — estimated at Sonnet rates'
+            : 'Estimated from local token usage, detected model, and static pricing data'}
+        >
+          est.{session.pricingConfidence === 'fallback' ? '*' : ''} {formatCost(totalCost)}
+        </span>
         {(session.cacheReadTokens ?? 0) > 0 && (
           <span className="opacity-50" title="Cache reads are billed at 0.1x and excluded from token count">
             +{formatTokens(session.cacheReadTokens)} cached
@@ -378,17 +500,18 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
         )}
         {(session.cacheHitRate ?? 0) > 0 && (
           <span className="text-green-400 opacity-80" title="Cache hit rate: fraction of input served from cache">
-            {session.cacheHitRate.toFixed(0)}% cache
+            {Math.round(session.cacheHitRate)}% cache
           </span>
         )}
         {session.hasThinking && (
-          <span className="text-yellow-400" title={`Extended thinking: ${formatTokens(session.thinkingTokens ?? 0)} thinking tokens`}>
-            ⚡ thinking{(session.thinkingTokens ?? 0) > 0 ? ` (${formatTokens(session.thinkingTokens)})` : ''}
+          <span className="inline-flex items-center gap-1 text-yellow-400" title={`Extended thinking: ${formatTokens(session.thinkingTokens ?? 0)} thinking tokens`}>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.68 4.32L14 7l-4.32 1.68L8 13 6.32 8.68 2 7l4.32-1.68L8 1z" /></svg>
+            thinking{(session.thinkingTokens ?? 0) > 0 ? ` (${formatTokens(session.thinkingTokens)})` : ''}
           </span>
         )}
         {(session.subagentCostUsd ?? 0) > 0 && (
           <span className="text-blue-400" title="Subagent sessions cost">
-            +${session.subagentCostUsd.toFixed(4)} subagents
+            +{formatCost(session.subagentCostUsd)} subagents
           </span>
         )}
       </div>
@@ -397,16 +520,25 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
         <div>
           <div className="text-xs opacity-50 mb-1">Files touched</div>
           <div className="flex flex-wrap gap-1">
-            {session.filesModified.map(f => (
-              <span
-                key={f}
-                title={f}
-                className="text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
-              >
-                {session.filesCreated?.includes(f) ? '🆕 ' : '✏️ '}
-                {f.split('/').pop()}
-              </span>
-            ))}
+            {session.filesModified.map(f => {
+              const created = session.filesCreated?.includes(f);
+              return (
+                <span
+                  key={f}
+                  title={`${created ? 'Created' : 'Edited'}: ${f}`}
+                  className="inline-flex items-center gap-1 text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
+                >
+                  <span className={created ? 'text-green-400' : 'text-yellow-400'} aria-hidden="true">
+                    {created ? (
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" /></svg>
+                    ) : (
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 1.5l3 3-8 8-3.5.5.5-3.5 8-8zm-9 11h11v1.5h-11z" /></svg>
+                    )}
+                  </span>
+                  {f.split('/').pop()}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}

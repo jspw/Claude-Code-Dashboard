@@ -64,19 +64,41 @@ describe('AlertManager', () => {
     expect(context.globalState.update).toHaveBeenCalledWith('lastCostBudgetExceededAlert', expect.any(Number));
   });
 
-  it('shows weekly digest only on Mondays with activity', () => {
+  it('shows the weekly digest when 7+ days have passed, with an Open Dashboard action', () => {
     const manager = new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
     context.globalState.get.mockReturnValue(0);
     store.getProjects.mockReturnValue([{ id: 'p1', name: 'Alpha' } as unknown as Project]);
-    store.getSessions.mockReturnValue([{ startTime: Date.now() - 1000, totalTokens: 12000 } as unknown as Session]);
+    store.getSessions.mockReturnValue([{ startTime: Date.now() - 1000, totalTokens: 12000, costUsd: 0.5 } as unknown as Session]);
 
     manager.checkWeeklyDigest();
 
     expect(context.globalState.update).toHaveBeenCalledWith('lastWeeklyDigest', expect.any(Number));
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('12k tokens used across 1 project(s)'));
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('12.0k tokens'),
+      'Open Dashboard'
+    );
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('top: Alpha'),
+      'Open Dashboard'
+    );
   });
 
-  it('shows the 80% cost warning and summarizes more than three active projects', () => {
+  it('skips the digest when it was shown less than 7 days ago or disabled by setting', () => {
+    const manager = new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
+    context.globalState.get.mockImplementation((key: string) => key === 'lastWeeklyDigest' ? Date.now() - 86_400_000 : 0);
+    manager.checkWeeklyDigest();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+    // disabled via setting
+    context.globalState.get.mockReturnValue(0);
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string, def: unknown) => key === 'weeklyDigest' ? false : def),
+    } as unknown as vscode.WorkspaceConfiguration);
+    manager.checkWeeklyDigest();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows the 80% cost warning and a multi-project digest', () => {
     let updateHandler: () => void = () => {};
     store.on.mockImplementation((_evt, cb) => { updateHandler = cb; });
     const manager = new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
@@ -100,8 +122,29 @@ describe('AlertManager', () => {
     manager.checkWeeklyDigest();
 
     expect(context.globalState.update).toHaveBeenCalledWith('lastCostBudget80Alert', expect.any(Number));
-    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('80% of monthly cost budget used'));
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('Projects: Alpha, Beta, Gamma +1 more.'));
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('80% of monthly cost budget used'),
+      'Open Dashboard',
+      'Snooze this month'
+    );
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('across 4 projects'),
+      'Open Dashboard'
+    );
+  });
+
+  it('suppresses budget alerts while snoozed', () => {
+    let updateHandler: () => void = () => {};
+    store.on.mockImplementation((_evt, cb) => { updateHandler = cb; });
+    store.getMonthlyTokens.mockReturnValue(1500);
+    store.getMonthlyUsage.mockReturnValue({ tokens: 1500, costUsd: 12 });
+    context.globalState.get.mockImplementation((key: string) =>
+      key === 'budgetSnoozeUntil' ? Date.now() + 86_400_000 : 0);
+
+    new AlertManager(store as unknown as DashboardStore, context as unknown as vscode.ExtensionContext);
+    updateHandler();
+
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
   it('skips alerts and digest work when budgets are disabled, under threshold, or recently shown', () => {

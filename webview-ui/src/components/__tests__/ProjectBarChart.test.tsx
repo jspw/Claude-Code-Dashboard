@@ -19,7 +19,7 @@ describe('ProjectBarChart', () => {
 
     expect(screen.getByText('Large Project')).toBeInTheDocument();
     expect(screen.getByText('1.2M tokens')).toBeInTheDocument();
-    expect(screen.getByText('$1.2345')).toBeInTheDocument();
+    expect(screen.getByText('$1.23')).toBeInTheDocument();
     expect(formatProjectBarTokens(1500)).toBe('2k');
     expect(formatProjectBarTokens(999)).toBe('999');
   });

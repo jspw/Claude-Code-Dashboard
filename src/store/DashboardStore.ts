@@ -109,7 +109,8 @@ export interface Session {
   idleTimeMs: number | null;      // sum of gaps >5min between assistant→user turns
   activeTimeMs: number | null;    // durationMs - idleTimeMs
   activityRatio: number | null;   // activeTimeMs / durationMs * 100
-  model: string | null;           // detected model (e.g. 'claude-opus-4', 'claude-sonnet-4')
+  model: string | null;           // raw detected model ID (e.g. 'claude-opus-4-8')
+  pricingConfidence?: 'exact' | 'fallback'; // 'fallback' = unknown model, priced at Sonnet rates
 }
 
 export interface Turn {
@@ -159,6 +160,25 @@ export interface PromptSearchResult {
   sessionId: string;
   turn: Turn;
   snippet: string; // highlighted match context
+}
+
+/** Lightweight cross-project session row for the dashboard Sessions tab. */
+export interface SessionRow {
+  id: string;
+  projectId: string;
+  projectName: string;
+  summary: string | null;
+  model: string | null;
+  pricingConfidence?: 'exact' | 'fallback';
+  startTime: number;
+  durationMs: number | null;
+  totalTokens: number;
+  costUsd: number;
+  subagentCostUsd: number;
+  hasThinking: boolean;
+  promptCount: number;
+  toolCallCount: number;
+  isActiveSession: boolean;
 }
 
 export interface McpServer {
@@ -894,6 +914,34 @@ export class DashboardStore extends EventEmitter {
     // Sort newest first, cap at 500
     results.sort((a, b) => b.turn.timestamp - a.turn.timestamp);
     return results.slice(0, 500);
+  }
+
+  /** Lightweight cross-project session rows for the dashboard Sessions tab (no turns). */
+  getAllSessionRows(): SessionRow[] {
+    const rows: SessionRow[] = [];
+    for (const project of this.getProjects()) {
+      for (const s of this.getSessions(project.id)) {
+        rows.push({
+          id: s.id,
+          projectId: project.id,
+          projectName: project.name,
+          summary: s.sessionSummary,
+          model: s.model,
+          pricingConfidence: s.pricingConfidence,
+          startTime: s.startTime,
+          durationMs: s.durationMs,
+          totalTokens: s.totalTokens,
+          costUsd: s.costUsd,
+          subagentCostUsd: s.subagentCostUsd,
+          hasThinking: s.hasThinking,
+          promptCount: s.promptCount,
+          toolCallCount: s.toolCallCount,
+          isActiveSession: s.isActiveSession,
+        });
+      }
+    }
+    rows.sort((a, b) => b.startTime - a.startTime);
+    return rows;
   }
 
   handleLiveEvent(event: LiveEvent) {

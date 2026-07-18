@@ -10,7 +10,7 @@ type TestWindow = Window & {
 };
 
 describe('App', () => {
-  it('renders dashboard by default and merges stateUpdate/liveEvent messages', async () => {
+  it('renders dashboard by default, merges stateUpdate, and ignores raw liveEvent payloads', async () => {
     const testWindow = window as TestWindow;
     testWindow.__INITIAL_VIEW__ = 'dashboard';
     testWindow.__INITIAL_DATA__ = { projects: [], stats: makeStats({ totalProjects: 0, activeSessionCount: 0 }) };
@@ -18,12 +18,14 @@ describe('App', () => {
     expect(screen.getByText('Claude Code Dashboard')).toBeInTheDocument();
 
     await act(async () => {
-      window.dispatchEvent(new MessageEvent('message', { data: { type: 'stateUpdate', payload: { projects: [makeProject({ name: 'Alpha' })] } } }));
-      window.dispatchEvent(new MessageEvent('message', { data: { type: 'liveEvent', payload: { stats: makeStats({ activeSessionCount: 5 }) } } }));
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'stateUpdate', payload: { projects: [makeProject({ name: 'Alpha' })], stats: makeStats({ totalProjects: 1, activeSessionCount: 5 }) } } }));
+      // Raw hook event: must NOT be spread into state (would corrupt the root)
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'liveEvent', payload: { type: 'PostToolUse', tool: 'Bash', stats: makeStats({ activeSessionCount: 99 }) } } }));
     });
 
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText(/5 active sessions/)).toBeInTheDocument();
+    expect(screen.queryByText(/99 active sessions/)).not.toBeInTheDocument();
   });
 
   it('renders sidebar and project views from initial globals', () => {

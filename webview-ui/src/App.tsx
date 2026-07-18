@@ -25,7 +25,10 @@ export default function App() {
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
-      if (msg.type === 'stateUpdate' || msg.type === 'liveEvent') {
+      // liveEvent payloads are raw hook events ({type, tool, sessionId, ...})
+      // and must not be spread into the state root; the store follows every
+      // live event with a debounced stateUpdate that carries derived state.
+      if (msg.type === 'stateUpdate') {
         setData((prev: unknown) => ({ ...(prev as object), ...msg.payload }));
       }
     };
@@ -39,7 +42,7 @@ export default function App() {
   }
 
   if (view === 'project') {
-    const { project, sessions, subagentSessions, config, projectStats, projectFiles, projectTodos, claudeCommits } = data as {
+    const { project, sessions, subagentSessions, config, projectStats, projectFiles, projectTodos, claudeCommits, initialSessionId } = data as {
       project: Project;
       sessions: Session[];
       subagentSessions?: Session[];
@@ -48,15 +51,16 @@ export default function App() {
       projectFiles?: ProjectFile[];
       projectTodos?: SessionTodoSnapshot[];
       claudeCommits?: ClaudeCommit[];
+      initialSessionId?: string;
     };
-    return <ProjectDetail project={project} sessions={sessions} subagentSessions={subagentSessions} config={config} projectStats={projectStats} projectFiles={projectFiles} projectTodos={projectTodos} claudeCommits={claudeCommits} />;
+    return <ProjectDetail project={project} sessions={sessions} subagentSessions={subagentSessions} config={config} projectStats={projectStats} projectFiles={projectFiles} projectTodos={projectTodos} claudeCommits={claudeCommits} initialSessionId={initialSessionId} />;
   }
 
   const {
     projects, stats, usageOverTime, usageByProject, heatmapData,
     promptPatterns, toolUsage, hotFiles, projectedCost,
     streak, efficiency, weeklyRecap, recentChanges, productivityByHour,
-    budgetStatus,
+    budgetStatus, showTour,
   } = data as {
     projects: Project[];
     stats: DashboardStats;
@@ -73,6 +77,7 @@ export default function App() {
     recentChanges?: RecentFileChange[];
     productivityByHour?: ProductivityHour[];
     budgetStatus?: BudgetStatus | null;
+    showTour?: boolean;
   };
 
   return (
@@ -92,6 +97,7 @@ export default function App() {
       recentChanges={recentChanges}
       productivityByHour={productivityByHour}
       budgetStatus={budgetStatus}
+      showTour={showTour}
     />
   );
 }
