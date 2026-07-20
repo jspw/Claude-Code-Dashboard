@@ -113,7 +113,8 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 
 | Component | Used in |
 |---|---|
-| `SessionDetail.tsx` (+ `modelLabel`, `modelBadgeColor`) | ProjectDetail → Sessions tab; includes the copy-resume-command button |
+| `SessionDetail.tsx` (+ `modelLabel`, `modelBadgeColor`) | ProjectDetail → Sessions tab; session meta header + copy-resume-command button; renders turns via `conversation/` |
+| `conversation/` (`ConversationTurn`, `ResponseGroup`, `UserMessageCard`, `ThinkingRow`, `ToolCallRow`, `AgentCallBlock`, `SkillContextRow`, `SystemEventRow`, `shared.tsx`, `systemEvents.ts`) | Claude-Code-extension-style conversation timeline: user prompt cards ("You" header + accent border), tool-colored dots joined by connector lines (everything between two user prompts merges into one `ResponseGroup`), tool "OUT" output boxes, project-relative file hints, show-less-by-default messages |
 | `SessionsBrowser.tsx` | Dashboard → Sessions tab (cross-project rows + backend-served prompt search) |
 | `WeeklyStatsTab.tsx` | ProjectDetail → Activity (usage trend) |
 | `MarkdownView.tsx` (+ `CommandBlock`) | ProjectDetail → Setup (CLAUDE.md, memory, commands) |
@@ -156,7 +157,7 @@ Session turns are **lazy-loaded**: initial state ships sessions with `turns: []`
 
 - **Project** — `{ id, name, path, lastActive, isActive, sessionCount, totalTokens, totalCostUsd, techStack[] }`
 - **Session** — `{ id, projectId, parentSessionId, startTime, endTime, durationMs, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens, costUsd, promptCount, toolCallCount, filesModified[], filesCreated[], turns[], sessionSummary, hasThinking, thinkingTokens, cacheHitRate, subagentCostUsd, idleTimeMs, activeTimeMs, activityRatio, model }`
-- **Turn** — `{ id, role, content, inputTokens, outputTokens, toolCalls[], timestamp }`
+- **Turn** — `{ id, role, content, inputTokens, outputTokens, toolCalls[], timestamp, thinking? }`
 - **ToolCall** — `{ id, name, input, output?, mcpServer? }`
 - **ProjectConfig** — `{ claudeMd, mcpServers, projectSettings, commands[], memory, hooks[] }`
 - **ProjectStats** — `{ usageOverTime[], toolUsage[], promptPatterns[], efficiency, recentToolCalls[], weeklyStats }`

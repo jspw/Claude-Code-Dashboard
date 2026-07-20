@@ -1,139 +1,29 @@
 import React from 'react';
-import { Session, Turn, ToolCall, TurnAttachment } from '../types';
+import { Session, Turn } from '../types';
 import { formatTokens, formatCost, formatDuration } from '../utils/format';
-import { toolColor } from '../utils/toolColor';
-import { MarkdownView } from './MarkdownView';
+import { isPromptTurn } from './conversation/ConversationTurn';
+import { UserMessageCard } from './conversation/UserMessageCard';
+import { ResponseGroup } from './conversation/ResponseGroup';
 
-// ── System event parsing ───────────────────────────────────────────────────────
+// Re-exported for existing importers (SessionsBrowser, ProjectDetail, tests).
+export { parseSystemContent, stripAnsi } from './conversation/systemEvents';
 
-type SystemEvent =
-  | { kind: 'command'; name: string; args?: string }
-  | { kind: 'stdout'; text: string }
-  | { kind: 'skill'; name: string; body: string };
-
-// Loading a skill injects its full instructions as a "user" message that begins
-// with this marker. These can be hundreds of KB — surface them as collapsed
-// context rather than a user turn.
-const SKILL_INJECTION_PREFIX = 'Base directory for this skill:';
-
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
-export function stripAnsi(s: string): string { return s.replace(ANSI_RE, ''); }
-
-export function parseSystemContent(content: string): SystemEvent | 'skip' | null {
-  const t = content.trim();
-  if (/<local-command-caveat>/i.test(t) && !t.replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/gi, '').trim()) {
-    return 'skip';
-  }
-  if (t.startsWith(SKILL_INJECTION_PREFIX)) {
-    const nl = t.indexOf('\n');
-    const firstLine = nl === -1 ? t : t.slice(0, nl);
-    const dir = firstLine.slice(SKILL_INJECTION_PREFIX.length).trim();
-    const name = dir.split('/').filter(Boolean).pop() || 'skill';
-    return { kind: 'skill', name, body: t.slice(firstLine.length).trim() };
-  }
-  const cmdMatch = t.match(/<command-name>([^<]+)<\/command-name>/);
-  if (cmdMatch) {
-    const argsMatch = t.match(/<command-args>([\s\S]*?)<\/command-args>/);
-    const args = argsMatch?.[1]?.trim() || undefined;
-    return { kind: 'command', name: cmdMatch[1].trim(), args };
-  }
-  const stdoutMatch = t.match(/<(?:local-command-stdout|command-stdout)>([\s\S]*?)<\/(?:local-command-stdout|command-stdout)>/);
-  if (stdoutMatch) {
-    const text = stripAnsi(stdoutMatch[1].trim());
-    return text ? { kind: 'stdout', text } : 'skip';
-  }
+export function modelLabel(model: string | null): string | null {
+  if (!model) return null;
+  if (model.includes('fable')) return 'Fable';
+  if (model.includes('mythos')) return 'Mythos';
+  if (model.includes('opus')) return 'Opus';
+  if (model.includes('haiku')) return 'Haiku';
+  if (model.includes('sonnet')) return 'Sonnet';
   return null;
 }
 
-function SystemEventRow({ event }: { event: SystemEvent }) {
-  if (event.kind === 'command') {
-    return (
-      <div className="flex items-center gap-1.5 text-xs opacity-40 py-0.5 pl-1">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-          <rect x="1" y="1" width="10" height="10" rx="1.5" />
-          <path d="M3.5 4.5 5.5 6 3.5 7.5M6.5 7.5h2" />
-        </svg>
-        <span className="font-mono">{event.name}</span>
-        {event.args && <span className="opacity-60 font-mono">{event.args}</span>}
-      </div>
-    );
-  }
-  if (event.kind === 'stdout') {
-    return (
-      <div className="flex items-center gap-1.5 text-xs opacity-35 py-0.5 pl-1 font-mono">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-          <path d="M2 6h7M6.5 3.5 9 6l-2.5 2.5" />
-        </svg>
-        <span>{event.text}</span>
-      </div>
-    );
-  }
-  return null;
-}
-
-// Skill instructions injected as a "user" turn — rendered as collapsed context.
-function SkillContextRow({ event }: { event: Extract<SystemEvent, { kind: 'skill' }> }) {
-  const [expanded, setExpanded] = React.useState(false);
-  const body = event.body;
-  const shown = body.length > CONTENT_RENDER_CAP ? body.slice(0, CONTENT_RENDER_CAP) : body;
-  const hidden = body.length - shown.length;
-  return (
-    <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden opacity-80">
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors text-left"
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-60" aria-hidden="true">
-          <path d="M0 1.75A.75.75 0 01.75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0111.006 1h4.245a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-4.507a2.25 2.25 0 00-1.591.659l-.622.621a.75.75 0 01-1.06 0l-.622-.621A2.25 2.25 0 005.258 13H.75a.75.75 0 01-.75-.75V1.75zm8.755 3a2.25 2.25 0 012.25-2.25H14.5v9h-3.757c-.71 0-1.4.201-1.992.572l.004-7.322zm-1.504 7.324l.004-5.073-.002-2.253A2.25 2.25 0 005.003 2.5H1.5v9h3.757a3.75 3.75 0 011.994.574z" />
-        </svg>
-        <span className="text-[11px] uppercase tracking-wider opacity-50 font-semibold">Skill loaded</span>
-        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] truncate max-w-[200px]">{event.name}</span>
-        <span className="ml-auto text-xs opacity-40 shrink-0">{expanded ? 'Hide' : 'Show'} context</span>
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`shrink-0 opacity-40 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true">
-          <path d="M8 11L3 6l1.06-1.06L8 8.88l3.94-3.94L13 6z" />
-        </svg>
-      </button>
-      {expanded && (
-        <div className="px-3 pb-2 border-t border-[var(--vscode-panel-border)]">
-          <MarkdownView content={shown} compact />
-          {hidden > 0 && (
-            <div className="text-xs opacity-40 mt-1">
-              {hidden.toLocaleString()} more chars hidden — open the session file to see the full skill.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Turn rendering ─────────────────────────────────────────────────────────────
-
-function TurnToolBadge({ tc }: { tc: ToolCall }) {
-  const displayName = tc.name.startsWith('mcp__')
-    ? tc.name.slice(5).replace('__', '/')
-    : tc.name;
-  const hint = (tc.input?.file_path as string | undefined)
-    ?? (tc.input?.command as string | undefined)
-    ?? (tc.input?.pattern as string | undefined)
-    ?? (tc.input?.query as string | undefined)
-    ?? '';
-  return (
-    <div className="flex items-center gap-2 text-xs min-w-0">
-      <span
-        className="font-mono font-semibold shrink-0 px-1.5 py-0.5 rounded"
-        style={{ background: toolColor(tc.name) + '22', color: toolColor(tc.name) }}
-      >
-        {displayName}
-      </span>
-      {hint && (
-        <span className="opacity-50 truncate font-mono" title={hint}>
-          {hint.length > 80 ? hint.slice(0, 80) + '…' : hint}
-        </span>
-      )}
-    </div>
-  );
+export function modelBadgeColor(model: string | null): string {
+  if (!model) return '';
+  if (model.includes('fable') || model.includes('mythos')) return 'text-pink-400 bg-pink-500/15';
+  if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
+  if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';
+  return 'text-blue-400 bg-blue-500/15';
 }
 
 function truncateSessionId(id: string): string {
@@ -154,251 +44,6 @@ function SessionIdGlyph({ copied }: { copied: boolean }) {
       <path d="M1 1h4v4H1V1zm1 1v2h2V2H2zm5-1h4v4H7V1zm1 1v2h2V2H8zm5-1h2v2h-2V1zM1 7h4v4H1V7zm1 1v2h2V8H2zm5-1h4v4H7V7zm1 1v2h2V8H8zm5-1h2v2h-2V7zM1 13h2v2H1v-2zm6 0h4v2H7v-2zm6 0h2v2h-2v-2z"/>
     </svg>
   );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = React.useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  return (
-    <button
-      onClick={copy}
-      title={copied ? 'Copied!' : 'Copy'}
-      className={`opacity-30 hover:opacity-70 transition-opacity ${copied ? '!opacity-80' : ''}`}
-    >
-      {copied ? (
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-        </svg>
-      ) : (
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-          <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-        </svg>
-      )}
-    </button>
-  );
-}
-
-function CollapseButton({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      title={collapsed ? 'Expand' : 'Collapse'}
-      className="opacity-30 hover:opacity-70 transition-opacity"
-    >
-      {collapsed ? (
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 9.5l-5-5 1.06-1.06L8 7.44l4.94-4 1.06 1.06z"/>
-        </svg>
-      ) : (
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 6.5l5 5-1.06 1.06L8 8.56l-4.94 4.94L2 12.44z"/>
-        </svg>
-      )}
-    </button>
-  );
-}
-
-function AgentCallBlock({ tc, tokenInfo }: { tc: ToolCall; tokenInfo?: { input: number; output: number } }) {
-  const [collapsed, setCollapsed] = React.useState(false);
-  const prompt = (tc.input?.prompt as string | undefined)?.trim() ?? '';
-  return (
-    <div className="rounded-lg overflow-hidden text-sm border border-cyan-500/30 bg-[var(--vscode-editor-background)]">
-      <div className="px-3 pt-2.5 pb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-cyan-400 opacity-80">Agent</span>
-        <span className="text-xs bg-cyan-500/15 text-cyan-400 px-1.5 py-0.5 rounded font-mono">subagent</span>
-        <div className="ml-auto flex items-center gap-2">
-          {prompt && <CopyButton text={prompt} />}
-          <CollapseButton collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
-        </div>
-      </div>
-      {!collapsed && prompt && (
-        <div className="px-3 pb-2 border-t border-cyan-500/20">
-          <MarkdownView content={prompt} compact />
-        </div>
-      )}
-      {collapsed && prompt && (
-        <div className="px-3 pb-2.5 text-xs opacity-40 truncate font-mono">{prompt.slice(0, 120)}{prompt.length > 120 ? '…' : ''}</div>
-      )}
-      {tokenInfo && tokenInfo.output > 0 && (
-        <div className="px-3 pb-2 text-xs opacity-20 text-right">{formatTokens(tokenInfo.input)}↑ {formatTokens(tokenInfo.output)}↓</div>
-      )}
-    </div>
-  );
-}
-
-function AttachmentChips({ attachments }: { attachments: TurnAttachment[] }) {
-  return (
-    <div className="px-3 pb-1.5 flex flex-wrap gap-1.5">
-      {attachments.map(a => (
-        <span
-          key={a.path}
-          title={a.path}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] max-w-full min-w-0"
-        >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="shrink-0" aria-hidden="true">
-            <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0113.25 16h-9.5A1.75 1.75 0 012 14.25V1.75zm1.75-.25a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 019 4.25V1.5H3.75zm6.75.062V4.25c0 .138.112.25.25.25h2.688a.252.252 0 00-.011-.013l-2.914-2.914a.25.25 0 00-.013-.011z" />
-          </svg>
-          <span className="truncate">{a.displayPath || a.path}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// Injected context (skill listings, pasted files) can make a single turn
-// hundreds of KB long, which explodes into thousands of DOM nodes and freezes
-// the webview. Render a bounded preview by default, expandable up to a hard cap.
-const CONTENT_PREVIEW_LIMIT = 4000;
-const CONTENT_RENDER_CAP = 40000;
-
-function TurnBlock({ turn }: { turn: Turn }) {
-  const [collapsed, setCollapsed] = React.useState(false);
-  const [showFull, setShowFull] = React.useState(false);
-  const content = turn.content?.trim() ?? '';
-  const hasContent = content.length > 0;
-  const isLongContent = content.length > CONTENT_PREVIEW_LIMIT;
-  const displayContent = !isLongContent
-    ? content
-    : showFull
-      ? content.slice(0, CONTENT_RENDER_CAP)
-      : content.slice(0, CONTENT_PREVIEW_LIMIT);
-  const cappedHidden = isLongContent && showFull ? content.length - CONTENT_RENDER_CAP : 0;
-  const hasTools = turn.toolCalls.length > 0;
-  const attachments = turn.attachments ?? [];
-
-  if (!hasContent && !hasTools && attachments.length === 0) return null;
-
-  if (turn.role === 'user' && hasContent) {
-    const sys = parseSystemContent(content);
-    if (sys === 'skip') return null;
-    if (sys && sys.kind === 'skill') return <SkillContextRow event={sys} />;
-    if (sys) return <SystemEventRow event={sys} />;
-  }
-
-  // Split tool calls: Agent gets full blocks, others get compact badges
-  const agentCalls = turn.toolCalls.filter(tc => tc.name === 'Agent');
-  const regularCalls = turn.toolCalls.filter(tc => tc.name !== 'Agent');
-
-  // Tool-only assistant turn
-  if (turn.role === 'assistant' && !hasContent && hasTools) {
-    const tokenInfo = { input: turn.inputTokens, output: turn.outputTokens };
-    return (
-      <div className="space-y-2">
-        {agentCalls.map(tc => (
-          <AgentCallBlock key={tc.id} tc={tc} tokenInfo={agentCalls.length === 1 && regularCalls.length === 0 ? tokenInfo : undefined} />
-        ))}
-        {regularCalls.length > 0 && (
-          <div className="pl-3 border-l-2 border-[var(--vscode-panel-border)] space-y-1.5 py-0.5">
-            {regularCalls.map(tc => (
-              <TurnToolBadge key={tc.id} tc={tc} />
-            ))}
-            {turn.outputTokens > 0 && agentCalls.length === 0 && (
-              <div className="text-xs opacity-20">{formatTokens(turn.inputTokens)}↑ {formatTokens(turn.outputTokens)}↓</div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const isUser = turn.role === 'user';
-
-  return (
-    <div className={`space-y-2 ${isUser ? 'pl-6 sm:pl-10' : ''}`}>
-      <div className={`rounded-lg overflow-hidden text-sm ${isUser
-        ? 'bg-[var(--vscode-input-background)] border-l-2 border-[var(--vscode-button-background)]'
-        : 'bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)]'}`}>
-        <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-2">
-          {isUser ? (
-            <span className="inline-flex items-center gap-1.5 text-xs opacity-50 font-semibold uppercase tracking-wider">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                <path d="M10.561 8.073a6.005 6.005 0 013.432 5.142.75.75 0 11-1.498.07 4.5 4.5 0 00-8.99 0 .75.75 0 01-1.498-.07 6.004 6.004 0 013.431-5.142 3.999 3.999 0 115.123 0zM10.5 5a2.5 2.5 0 10-5 0 2.5 2.5 0 005 0z"/>
-              </svg>
-              You
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--vscode-button-background)]">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                <path d="M8 1l1.68 4.32L14 7l-4.32 1.68L8 13 6.32 8.68 2 7l4.32-1.68L8 1zm5 8l.84 2.16L16 12l-2.16.84L13 15l-.84-2.16L10 12l2.16-.84L13 9z"/>
-              </svg>
-              Claude
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            {hasContent && <CopyButton text={content} />}
-            <CollapseButton collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
-          </div>
-        </div>
-        {!collapsed && (
-          <>
-            {attachments.length > 0 && <AttachmentChips attachments={attachments} />}
-            {hasContent && (
-              <div className="px-3 pb-1">
-                <MarkdownView content={displayContent} compact highlightMentions={isUser} />
-                {isLongContent && (
-                  <div className="mt-1">
-                    <button
-                      onClick={() => setShowFull(v => !v)}
-                      className="text-xs px-2 py-0.5 rounded border border-[var(--vscode-panel-border)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors"
-                    >
-                      {showFull ? 'Show less' : `Show full message (${content.length.toLocaleString()} chars)`}
-                    </button>
-                    {cappedHidden > 0 && (
-                      <span className="ml-2 text-xs opacity-40">
-                        {cappedHidden.toLocaleString()} more chars hidden — use copy to get the full text
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            {regularCalls.length > 0 && (
-              <div className={`px-3 pb-2.5 space-y-1.5 ${hasContent ? 'border-t border-[var(--vscode-panel-border)] pt-2 mt-1' : 'pt-1'}`}>
-                {regularCalls.map(tc => (
-                  <TurnToolBadge key={tc.id} tc={tc} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {collapsed && hasContent && (
-          <div className="px-3 pb-2.5 text-xs opacity-40 truncate">{content.slice(0, 120)}{content.length > 120 ? '…' : ''}</div>
-        )}
-        {turn.outputTokens > 0 && (
-          <div className="px-3 pb-2 text-xs opacity-25 text-right">{formatTokens(turn.inputTokens)}↑ {formatTokens(turn.outputTokens)}↓</div>
-        )}
-      </div>
-      {agentCalls.map(tc => (
-        <AgentCallBlock key={tc.id} tc={tc} />
-      ))}
-    </div>
-  );
-}
-
-// ── SessionDetail ──────────────────────────────────────────────────────────────
-
-export function modelLabel(model: string | null): string | null {
-  if (!model) return null;
-  if (model.includes('fable')) return 'Fable';
-  if (model.includes('mythos')) return 'Mythos';
-  if (model.includes('opus')) return 'Opus';
-  if (model.includes('haiku')) return 'Haiku';
-  if (model.includes('sonnet')) return 'Sonnet';
-  return null;
-}
-
-export function modelBadgeColor(model: string | null): string {
-  if (!model) return '';
-  if (model.includes('fable') || model.includes('mythos')) return 'text-pink-400 bg-pink-500/15';
-  if (model.includes('opus')) return 'text-purple-400 bg-purple-500/15';
-  if (model.includes('haiku')) return 'text-orange-400 bg-orange-500/15';
-  return 'text-blue-400 bg-blue-500/15';
 }
 
 function ResumeButton({ sessionId }: { sessionId: string }) {
@@ -426,7 +71,7 @@ function ResumeButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
+function SessionMetaRow({ session }: { session: Session }) {
   const totalCost = session.costUsd + (session.subagentCostUsd ?? 0);
   const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
 
@@ -442,116 +87,147 @@ export default function SessionDetail({ session, turns, loading }: { session: Se
   }, [session.id]);
 
   return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
+      <button
+        type="button"
+        onClick={() => void copySessionId()}
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono transition-all -my-0.5 ${
+          copyState === 'copied'
+            ? 'bg-green-500/20 !text-green-400 !opacity-100'
+            : copyState === 'failed'
+            ? 'bg-red-500/20 !text-red-400 !opacity-100'
+            : 'bg-[var(--vscode-editor-inactiveSelectionBackground)] hover:!opacity-90'
+        }`}
+        title={
+          copyState === 'copied'
+            ? `Copied full ID: ${session.id}`
+            : copyState === 'failed'
+            ? `Copy failed. Session ID: ${session.id}`
+            : `Copy ID: ${session.id}`
+        }
+        aria-label="Copy session ID"
+      >
+        <SessionIdGlyph copied={copyState === 'copied'} />
+        {copyState === 'copied' ? 'copied' : copyState === 'failed' ? 'failed' : truncateSessionId(session.id)}
+      </button>
+      <span>·</span>
+      <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
+      {modelLabel(session.model) && (
+        <span
+          title={session.model ?? undefined}
+          className={`font-semibold px-1.5 py-0.5 rounded opacity-100 ${modelBadgeColor(session.model)}`}
+        >
+          {modelLabel(session.model)}
+        </span>
+      )}
+      <span>·</span>
+      <span>{formatDuration(session.durationMs)}</span>
+      <span>·</span>
+      <span title={`input: ${session.inputTokens?.toLocaleString()} · cache write: ${session.cacheCreationTokens?.toLocaleString()} · cache read: ${session.cacheReadTokens?.toLocaleString()} · output: ${session.outputTokens?.toLocaleString()}`}>
+        {formatTokens(session.totalTokens)} tokens
+      </span>
+      <span>·</span>
+      <span
+        title={session.pricingConfidence === 'fallback'
+          ? 'Model unknown or not in the pricing table — estimated at Sonnet rates'
+          : 'Estimated from local token usage, detected model, and static pricing data'}
+      >
+        est.{session.pricingConfidence === 'fallback' ? '*' : ''} {formatCost(totalCost)}
+      </span>
+      {(session.cacheReadTokens ?? 0) > 0 && (
+        <span className="opacity-50" title="Cache reads are billed at 0.1x and excluded from token count">
+          +{formatTokens(session.cacheReadTokens)} cached
+        </span>
+      )}
+      {(session.cacheHitRate ?? 0) > 0 && (
+        <span className="text-green-400 opacity-80" title="Cache hit rate: fraction of input served from cache">
+          {Math.round(session.cacheHitRate)}% cache
+        </span>
+      )}
+      {session.hasThinking && (
+        <span className="inline-flex items-center gap-1 text-yellow-400" title={`Extended thinking: ${formatTokens(session.thinkingTokens ?? 0)} thinking tokens`}>
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.68 4.32L14 7l-4.32 1.68L8 13 6.32 8.68 2 7l4.32-1.68L8 1z" /></svg>
+          thinking{(session.thinkingTokens ?? 0) > 0 ? ` (${formatTokens(session.thinkingTokens)})` : ''}
+        </span>
+      )}
+      {(session.subagentCostUsd ?? 0) > 0 && (
+        <span className="text-blue-400" title="Subagent sessions cost">
+          +{formatCost(session.subagentCostUsd)} subagents
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FilesTouched({ session }: { session: Session }) {
+  return (
+    <div>
+      <div className="text-xs opacity-50 mb-1">Files touched</div>
+      <div className="flex flex-wrap gap-1">
+        {session.filesModified.map(f => {
+          const created = session.filesCreated?.includes(f);
+          return (
+            <span
+              key={f}
+              title={`${created ? 'Created' : 'Edited'}: ${f}`}
+              className="inline-flex items-center gap-1 text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
+            >
+              <span className={created ? 'text-green-400' : 'text-yellow-400'} aria-hidden="true">
+                {created ? (
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" /></svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 1.5l3 3-8 8-3.5.5.5-3.5 8-8zm-9 11h11v1.5h-11z" /></svg>
+                )}
+              </span>
+              {f.split('/').pop()}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Everything between two user prompts renders as one ResponseGroup so the
+// timeline connector line runs unbroken across the whole response — tool
+// calls, thoughts, text, and system rows alike.
+function conversationBlocks(turns: Turn[], projectRoot: string | null): React.ReactNode[] {
+  const blocks: React.ReactNode[] = [];
+  let group: Turn[] = [];
+  const flush = () => {
+    if (group.length > 0) {
+      blocks.push(<ResponseGroup key={group[0].id} turns={group} projectRoot={projectRoot} />);
+      group = [];
+    }
+  };
+  for (const turn of turns) {
+    if (isPromptTurn(turn)) {
+      flush();
+      blocks.push(<UserMessageCard key={turn.id} turn={turn} />);
+    } else {
+      group.push(turn);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
+  return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <ResumeButton sessionId={session.id} />
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-60">
-        <button
-          type="button"
-          onClick={() => void copySessionId()}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono transition-all -my-0.5 ${
-            copyState === 'copied'
-              ? 'bg-green-500/20 !text-green-400 !opacity-100'
-              : copyState === 'failed'
-              ? 'bg-red-500/20 !text-red-400 !opacity-100'
-              : 'bg-[var(--vscode-editor-inactiveSelectionBackground)] hover:!opacity-90'
-          }`}
-          title={
-            copyState === 'copied'
-              ? `Copied full ID: ${session.id}`
-              : copyState === 'failed'
-              ? `Copy failed. Session ID: ${session.id}`
-              : `Copy ID: ${session.id}`
-          }
-          aria-label="Copy session ID"
-        >
-          <SessionIdGlyph copied={copyState === 'copied'} />
-          {copyState === 'copied' ? 'copied' : copyState === 'failed' ? 'failed' : truncateSessionId(session.id)}
-        </button>
-        <span>·</span>
-        <span>{new Date(session.startTime).toLocaleString([], { hour12: true })}</span>
-        {modelLabel(session.model) && (
-          <span
-            title={session.model ?? undefined}
-            className={`font-semibold px-1.5 py-0.5 rounded opacity-100 ${modelBadgeColor(session.model)}`}
-          >
-            {modelLabel(session.model)}
-          </span>
-        )}
-        <span>·</span>
-        <span>{formatDuration(session.durationMs)}</span>
-        <span>·</span>
-        <span title={`input: ${session.inputTokens?.toLocaleString()} · cache write: ${session.cacheCreationTokens?.toLocaleString()} · cache read: ${session.cacheReadTokens?.toLocaleString()} · output: ${session.outputTokens?.toLocaleString()}`}>
-          {formatTokens(session.totalTokens)} tokens
-        </span>
-        <span>·</span>
-        <span
-          title={session.pricingConfidence === 'fallback'
-            ? 'Model unknown or not in the pricing table — estimated at Sonnet rates'
-            : 'Estimated from local token usage, detected model, and static pricing data'}
-        >
-          est.{session.pricingConfidence === 'fallback' ? '*' : ''} {formatCost(totalCost)}
-        </span>
-        {(session.cacheReadTokens ?? 0) > 0 && (
-          <span className="opacity-50" title="Cache reads are billed at 0.1x and excluded from token count">
-            +{formatTokens(session.cacheReadTokens)} cached
-          </span>
-        )}
-        {(session.cacheHitRate ?? 0) > 0 && (
-          <span className="text-green-400 opacity-80" title="Cache hit rate: fraction of input served from cache">
-            {Math.round(session.cacheHitRate)}% cache
-          </span>
-        )}
-        {session.hasThinking && (
-          <span className="inline-flex items-center gap-1 text-yellow-400" title={`Extended thinking: ${formatTokens(session.thinkingTokens ?? 0)} thinking tokens`}>
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.68 4.32L14 7l-4.32 1.68L8 13 6.32 8.68 2 7l4.32-1.68L8 1z" /></svg>
-            thinking{(session.thinkingTokens ?? 0) > 0 ? ` (${formatTokens(session.thinkingTokens)})` : ''}
-          </span>
-        )}
-        {(session.subagentCostUsd ?? 0) > 0 && (
-          <span className="text-blue-400" title="Subagent sessions cost">
-            +{formatCost(session.subagentCostUsd)} subagents
-          </span>
-        )}
-      </div>
-
-      {session.filesModified.length > 0 && (
-        <div>
-          <div className="text-xs opacity-50 mb-1">Files touched</div>
-          <div className="flex flex-wrap gap-1">
-            {session.filesModified.map(f => {
-              const created = session.filesCreated?.includes(f);
-              return (
-                <span
-                  key={f}
-                  title={`${created ? 'Created' : 'Edited'}: ${f}`}
-                  className="inline-flex items-center gap-1 text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
-                >
-                  <span className={created ? 'text-green-400' : 'text-yellow-400'} aria-hidden="true">
-                    {created ? (
-                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" /></svg>
-                    ) : (
-                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 1.5l3 3-8 8-3.5.5.5-3.5 8-8zm-9 11h11v1.5h-11z" /></svg>
-                    )}
-                  </span>
-                  {f.split('/').pop()}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <SessionMetaRow session={session} />
+      {session.filesModified.length > 0 && <FilesTouched session={session} />}
 
       {loading ? (
         <div className="text-xs opacity-40 text-center py-8">Loading turns...</div>
       ) : turns.length === 0 ? (
         <div className="text-xs opacity-40 text-center py-8">No turns recorded for this session.</div>
       ) : (
-        <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-          {turns.map(turn => (
-            <TurnBlock key={turn.id} turn={turn} />
-          ))}
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          {conversationBlocks(turns, session.cwd)}
         </div>
       )}
     </div>

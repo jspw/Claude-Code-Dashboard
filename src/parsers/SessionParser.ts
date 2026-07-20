@@ -34,6 +34,11 @@ export interface ParsedSession extends Session {
   isActiveSession: boolean;
 }
 
+// Turns ship to the webview over postMessage — cap the bulky per-turn extras
+// so a session with huge tool outputs or long thinking stays lightweight.
+const TOOL_OUTPUT_CAP = 2500;
+const THINKING_TEXT_CAP = 10000;
+
 export class SessionParser {
   /** Read just the cwd from the first entry in a JSONL file */
   readCwd(filePath: string): string | null {
@@ -75,6 +80,8 @@ export class SessionParser {
       // File attachments appear as separate entries right after the user
       // message that @-tagged them; buffer any that arrive before their turn.
       let pendingAttachments: TurnAttachment[] = [];
+      // Tool results echo back as later user entries referencing tool_use_id.
+      const toolCallById = new Map<string, ToolCall>();
 
       for (const line of lines) {
         try {
@@ -90,6 +97,24 @@ export class SessionParser {
             if (!startTime && ts) { startTime = ts; }
 
             const rawContent = entry.message.content;
+
+            // Attach tool results to the originating tool call — they are
+            // echoes of assistant activity, not user prompts.
+            const toolResults = Array.isArray(rawContent)
+              ? rawContent.filter((c: any) => c.type === 'tool_result')
+              : [];
+            for (const tr of toolResults) {
+              const target = toolCallById.get(tr.tool_use_id);
+              if (!target || target.output !== undefined) { continue; }
+              const raw = typeof tr.content === 'string'
+                ? tr.content
+                : Array.isArray(tr.content)
+                  ? tr.content.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('\n')
+                  : '';
+              const trimmed = raw.trim();
+              if (trimmed) { target.output = trimmed.slice(0, TOOL_OUTPUT_CAP); }
+            }
+
             const text = Array.isArray(rawContent)
               ? rawContent.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('')
               : typeof rawContent === 'string' ? rawContent : '';
@@ -107,17 +132,20 @@ export class SessionParser {
               sessionSummary = displayText.slice(0, 120) + (displayText.length > 120 ? '…' : '');
             }
 
-            turns.push({
-              id: entry.uuid || String(ts),
-              role: 'user',
-              content: displayText,
-              inputTokens: 0,
-              outputTokens: 0,
-              toolCalls: [],
-              timestamp: ts,
-              ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}),
-            });
-            pendingAttachments = [];
+            // Pure tool-result entries are not prompts — skip the turn entirely.
+            if (toolResults.length === 0 || displayText.length > 0) {
+              turns.push({
+                id: entry.uuid || String(ts),
+                role: 'user',
+                content: displayText,
+                inputTokens: 0,
+                outputTokens: 0,
+                toolCalls: [],
+                timestamp: ts,
+                ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}),
+              });
+              pendingAttachments = [];
+            }
           }
 
           if (entry.type === 'attachment' && entry.attachment?.type === 'file') {
@@ -154,11 +182,13 @@ export class SessionParser {
             const toolCalls: ToolCall[] = [];
             const contentBlocks = Array.isArray(entry.message.content) ? entry.message.content : [];
             let textContent = '';
+            let turnThinking = '';
 
             for (const block of contentBlocks) {
               if (block.type === 'text') { textContent += block.text; }
               if (block.type === 'thinking') {
                 hasThinking = true;
+                if (typeof block.thinking === 'string') { turnThinking += block.thinking; }
                 // thinking blocks may report their own token count
                 if (typeof block.thinking_tokens === 'number') {
                   thinkingTokens += block.thinking_tokens as number;
@@ -169,7 +199,9 @@ export class SessionParser {
                 const mcpServer = typeof block.name === 'string' && block.name.startsWith('mcp__')
                   ? (block.name.split('__')[1] ?? undefined)
                   : undefined;
-                toolCalls.push({ id: block.id, name: block.name, input: block.input ?? {}, mcpServer });
+                const call: ToolCall = { id: block.id, name: block.name, input: block.input ?? {}, mcpServer };
+                toolCalls.push(call);
+                if (block.id) { toolCallById.set(block.id, call); }
 
                 if (block.name === 'Write') {
                   const fp = block.input?.file_path as string | undefined;
@@ -189,6 +221,7 @@ export class SessionParser {
               outputTokens: outTok,
               toolCalls,
               timestamp: ts,
+              ...(turnThinking.trim() ? { thinking: turnThinking.trim().slice(0, THINKING_TEXT_CAP) } : {}),
             });
           }
         } catch { /* skip malformed lines */ }

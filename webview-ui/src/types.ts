@@ -51,6 +51,7 @@ export interface Turn {
   toolCalls: ToolCall[];
   timestamp: number;
   attachments?: TurnAttachment[];  // files the user @-tagged in this prompt
+  thinking?: string;    // extended-thinking text emitted before this turn's content
 }
 
 export interface TurnAttachment {
