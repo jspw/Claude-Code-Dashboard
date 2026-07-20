@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.9.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.8.0...claude-code-dashboard-v1.9.0) (2026-07-20)
+
+
+### Features
+
+* **conversation:** redesign session timeline in claude-code style ([#39](https://github.com/jspw/Claude-Code-Dashboard/issues/39)) ([0e906ef](https://github.com/jspw/Claude-Code-Dashboard/commit/0e906ef26a350a5d4ab980947687e66764e12632))
+
 ## [1.8.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.7.0...claude-code-dashboard-v1.8.0) (2026-07-18)
 
 
