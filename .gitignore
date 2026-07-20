@@ -9,3 +9,5 @@ webview-ui/coverage/
 
 # Claude Code — local-only settings (personal overrides, not for team)
 .claude/settings.local.json
+.claude/.headroom_wrap_marker.json
+.tokensave

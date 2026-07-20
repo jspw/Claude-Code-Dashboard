@@ -280,3 +280,52 @@ export const SESSION_ARRAY_CONTENT = [
     },
   }),
 ].join('\n');
+
+export const SESSION_WITH_TOOL_RESULTS = [
+  JSON.stringify({
+    type: 'user',
+    uuid: 'u1',
+    timestamp: '2025-01-15T10:00:00Z',
+    cwd: '/home/user/project',
+    message: { content: 'Search the web' },
+  }),
+  JSON.stringify({
+    type: 'assistant',
+    uuid: 'a1',
+    timestamp: '2025-01-15T10:00:30Z',
+    message: {
+      model: 'claude-sonnet-4',
+      content: [
+        { type: 'thinking', thinking: 'Let me plan the search first.', thinking_tokens: 400 },
+        { type: 'text', text: 'Searching now.' },
+        { type: 'tool_use', id: 'ws1', name: 'WebSearch', input: { query: 'persistent memory' } },
+        { type: 'tool_use', id: 'ws2', name: 'Bash', input: { command: 'ls' } },
+      ],
+      usage: { input_tokens: 200, output_tokens: 100 },
+      stop_reason: 'tool_use',
+    },
+  }),
+  JSON.stringify({
+    type: 'user',
+    uuid: 'tr1',
+    timestamp: '2025-01-15T10:00:40Z',
+    message: {
+      content: [
+        { type: 'tool_result', tool_use_id: 'ws1', content: [{ type: 'text', text: '  Result A\nResult B  ' }] },
+        { type: 'tool_result', tool_use_id: 'ws2', content: 'file1.ts\nfile2.ts' },
+        { type: 'tool_result', tool_use_id: 'unknown-id', content: 'orphan' },
+      ],
+    },
+  }),
+  JSON.stringify({
+    type: 'assistant',
+    uuid: 'a2',
+    timestamp: '2025-01-15T10:01:00Z',
+    message: {
+      model: 'claude-sonnet-4',
+      content: [{ type: 'text', text: 'Found it.' }],
+      usage: { input_tokens: 300, output_tokens: 80 },
+      stop_reason: 'end_turn',
+    },
+  }),
+].join('\n');

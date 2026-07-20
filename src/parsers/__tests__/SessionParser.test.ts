@@ -14,6 +14,7 @@ import {
   SESSION_WITH_MCP,
   SESSION_WITH_THINKING,
   SESSION_WITH_TOOLS,
+  SESSION_WITH_TOOL_RESULTS,
 } from '../../__tests__/fixtures/jsonl-samples';
 
 vi.mock('fs');
@@ -184,6 +185,24 @@ describe('SessionParser', () => {
     expect(thinkingResult?.hasThinking).toBe(true);
     expect(thinkingResult?.thinkingTokens).toBe(5000);
     expect(thinkingResult?.model).toBe('claude-opus-4');
+  });
+
+  it('attaches tool outputs, captures thinking text, and skips tool-result turns', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_TOOL_RESULTS));
+    const result = parser.parseFile('/sessions/results.jsonl', 'proj-1');
+
+    // The tool-result user entry must not become a turn or count as a prompt
+    expect(result?.turns.map(t => t.role)).toEqual(['user', 'assistant', 'assistant']);
+    expect(result?.promptCount).toBe(1);
+
+    const [webSearch, bash] = result!.turns[1].toolCalls;
+    expect(webSearch.output).toBe('Result A\nResult B');
+    expect(bash.output).toBe('file1.ts\nfile2.ts');
+
+    expect(result?.turns[1].thinking).toBe('Let me plan the search first.');
+    expect(result?.turns[2].thinking).toBeUndefined();
+    expect(result?.hasThinking).toBe(true);
+    expect(result?.thinkingTokens).toBe(400);
   });
 
   it('computes idle, active, and duration metrics', () => {

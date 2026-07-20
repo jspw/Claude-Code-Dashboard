@@ -90,7 +90,7 @@ describe('SessionDetail', () => {
     expect(chip.closest('span[title]')).toHaveAttribute('title', '/home/user/project/docs/plan.md');
   });
 
-  it('truncates very long turn content behind a show-full toggle', () => {
+  it('defaults long messages to a short preview with a show-more toggle', () => {
     const longContent = 'word '.repeat(2000).trim(); // ~10k chars
     const session = makeSession({
       turns: [makeTurn({ role: 'user', content: longContent, timestamp: 1 })],
@@ -98,7 +98,7 @@ describe('SessionDetail', () => {
 
     render(<SessionDetail session={session} turns={session.turns} loading={false} />);
 
-    const toggle = screen.getByText(`Show full message (${longContent.length.toLocaleString()} chars)`);
+    const toggle = screen.getByText(`Show more (${(longContent.length - 300).toLocaleString()} more chars)`);
     expect(toggle).toBeInTheDocument();
 
     fireEvent.click(toggle);
@@ -131,8 +131,7 @@ describe('SessionDetail', () => {
     expect(screen.getByText('Data Viz')).toBeInTheDocument();
   });
 
-  it('renders cache, thinking, subagent cost, collapsed previews, and tool-only assistant turns', () => {
-    const longContent = 'A'.repeat(140);
+  it('renders cache, thinking, subagent cost, and tool call timeline rows', () => {
     const session = makeSession({
       model: 'claude-opus-4',
       cacheReadTokens: 300,
@@ -152,10 +151,10 @@ describe('SessionDetail', () => {
         }),
         makeTurn({
           role: 'assistant',
-          content: longContent,
+          content: 'Reading the file now.',
           inputTokens: 5,
           outputTokens: 0,
-          toolCalls: [makeToolCall({ name: 'Read', input: { file_path: '/tmp/file.ts' } })],
+          toolCalls: [makeToolCall({ name: 'WebSearch', input: { query: 'react hooks' } })],
           timestamp: 2,
         }),
       ],
@@ -171,9 +170,101 @@ describe('SessionDetail', () => {
     expect(screen.getByText('Copy resume command')).toBeInTheDocument();
     expect(screen.getByText('github/search')).toBeInTheDocument();
     expect(screen.getByText('repo:foo bug')).toBeInTheDocument();
-    expect(screen.getByText('10↑ 20↓')).toBeInTheDocument();
+    // consecutive assistant turns aggregate into one group token footer
+    expect(screen.getByText('15↑ 20↓')).toBeInTheDocument();
+    // camelCase tool names get the extension-style spaced label
+    expect(screen.getByText('Web Search')).toBeInTheDocument();
+    expect(screen.getByText('Reading the file now.')).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getAllByTitle('Collapse')[0]);
-    expect(screen.getByText(`${longContent.slice(0, 120)}…`)).toBeInTheDocument();
+  it('shows tool file paths relative to the project root', () => {
+    const session = makeSession({
+      cwd: '/home/user/project',
+      turns: [
+        makeTurn({
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            makeToolCall({ name: 'Read', input: { file_path: '/home/user/project/src/index.ts' } }),
+            makeToolCall({ name: 'Edit', input: { file_path: '/etc/hosts' } }),
+          ],
+          timestamp: 1,
+        }),
+      ],
+    });
+
+    render(<SessionDetail session={session} turns={session.turns} loading={false} />);
+
+    expect(screen.getByText('src/index.ts')).toBeInTheDocument();
+    // files outside the project keep the full path
+    expect(screen.getByText('/etc/hosts')).toBeInTheDocument();
+  });
+
+  it('copies the session ID and shows the failed state when the clipboard rejects', async () => {
+    const session = makeSession({ pricingConfidence: 'fallback', turns: [] });
+    render(<SessionDetail session={session} turns={[]} loading={false} />);
+
+    // fallback pricing is flagged with an asterisk
+    expect(screen.getByText(/est\.\*/)).toBeInTheDocument();
+
+    const chip = screen.getByLabelText('Copy session ID');
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    await waitFor(() => expect(screen.getByText('copied')).toBeInTheDocument());
+
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('denied'));
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    await waitFor(() => expect(screen.getByText('failed')).toBeInTheDocument());
+  });
+
+  it('renders a collapsed Thought row that expands to the thinking text', () => {
+    const session = makeSession({
+      turns: [
+        makeTurn({
+          role: 'assistant',
+          content: 'Answer.',
+          thinking: 'Let me reason about this problem first.',
+          timestamp: 1,
+        }),
+      ],
+    });
+
+    render(<SessionDetail session={session} turns={session.turns} loading={false} />);
+
+    expect(screen.getByText('Thought')).toBeInTheDocument();
+    expect(screen.queryByText('Let me reason about this problem first.')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Thought'));
+    expect(screen.getByText('Let me reason about this problem first.')).toBeInTheDocument();
+  });
+
+  it('renders tool outputs in an OUT box with expand for long output', () => {
+    const longOutput = 'line '.repeat(100).trim(); // ~600 chars
+    const session = makeSession({
+      turns: [
+        makeTurn({
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            makeToolCall({ name: 'Bash', input: { command: 'ls' }, output: 'file1.ts\nfile2.ts' }),
+            makeToolCall({ name: 'Grep', input: { pattern: 'foo' }, output: longOutput }),
+          ],
+          timestamp: 1,
+        }),
+      ],
+    });
+
+    render(<SessionDetail session={session} turns={session.turns} loading={false} />);
+
+    expect(screen.getAllByText('OUT')).toHaveLength(2);
+    expect(screen.getByText(/file1\.ts/)).toBeInTheDocument();
+
+    // long output is truncated until clicked
+    expect(screen.queryByText(longOutput)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Show full output'));
+    expect(screen.getByText(longOutput)).toBeInTheDocument();
   });
 });
