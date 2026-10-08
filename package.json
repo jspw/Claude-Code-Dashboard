@@ -149,7 +149,7 @@
     "@vitest/coverage-v8": "^3.2.4",
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.20.0",
-    "ovsx": "^0.10.9",
+    "ovsx": "^1.2.0",
     "typescript": "^5.3.0",
     "vitest": "^3.2.4"
   }
