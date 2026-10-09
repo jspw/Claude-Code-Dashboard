@@ -9,6 +9,7 @@ import { SkillContextRow } from './SkillContextRow';
 import { ThinkingRow } from './ThinkingRow';
 import { ToolCallRow } from './ToolCallRow';
 import { AgentCallBlock } from './AgentCallBlock';
+import { QuestionsBlock } from './QuestionsBlock';
 
 function AssistantMessageBody({ content, expanded }: { content: string; expanded: boolean }) {
   return (
@@ -82,7 +83,9 @@ export function ResponseGroup({ turns, projectRoot, repliesOnly = false }: {
         color: toolColor(tc.name),
         node: tc.name === 'Agent'
           ? <AgentCallBlock tc={tc} />
-          : <ToolCallRow tc={tc} projectRoot={projectRoot} />,
+          : tc.name === 'AskUserQuestion'
+            ? <QuestionsBlock tc={tc} />
+            : <ToolCallRow tc={tc} projectRoot={projectRoot} />,
       });
     }
   }

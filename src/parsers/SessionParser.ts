@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
+import { QuestionAnswer, Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
 import { promptText } from './promptText';
 import { digestTurns } from './sessionDigest';
 
@@ -40,6 +40,26 @@ export interface ParsedSession extends Session {
 // so a session with huge tool outputs or long thinking stays lightweight.
 const TOOL_OUTPUT_CAP = 2500;
 const THINKING_TEXT_CAP = 10000;
+
+// AskUserQuestion results carry the answers as structured data beside the
+// flattened text: `answers` maps each question to the picked label(s) or the
+// user's own text, and `annotations` holds the chosen preview and any notes.
+function questionAnswers(result: unknown): Record<string, QuestionAnswer> | undefined {
+  const answers = (result as any)?.answers;
+  if (!answers || typeof answers !== 'object') { return undefined; }
+  const annotations = (result as any).annotations ?? {};
+  const out: Record<string, QuestionAnswer> = {};
+  for (const [question, answer] of Object.entries(answers)) {
+    if (typeof answer !== 'string') { continue; }
+    const note = annotations[question] ?? {};
+    out[question] = {
+      answer,
+      ...(typeof note.notes === 'string' && note.notes.trim() ? { notes: note.notes.trim() } : {}),
+      ...(typeof note.preview === 'string' && note.preview ? { preview: note.preview.slice(0, TOOL_OUTPUT_CAP) } : {}),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 export class SessionParser {
   /** Read just the cwd from the first entry in a JSONL file */
@@ -115,6 +135,10 @@ export class SessionParser {
                   : '';
               const trimmed = raw.trim();
               if (trimmed) { target.output = trimmed.slice(0, TOOL_OUTPUT_CAP); }
+              if (target.name === 'AskUserQuestion') {
+                const answers = questionAnswers(entry.toolUseResult);
+                if (answers) { target.answers = answers; }
+              }
             }
 
             const text = Array.isArray(rawContent)

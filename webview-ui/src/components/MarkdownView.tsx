@@ -79,6 +79,30 @@ function renderInline(
   }).filter(Boolean);
 }
 
+// GFM tables: a pipe row followed by a `|---|:--:|` separator row.
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+type Align = 'left' | 'center' | 'right';
+
+function isTableStart(lines: string[], i: number): boolean {
+  // The separator must hold a pipe too, so `text | more` over a `---` rule
+  // stays a paragraph and a rule.
+  const next = lines[i + 1];
+  return lines[i].includes('|') && next !== undefined && next.includes('|') && next.includes('-') && TABLE_SEPARATOR_RE.test(next);
+}
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '');
+  return trimmed.split(/(?<!\\)\|/).map(cell => cell.trim().replace(/\\\|/g, '|'));
+}
+
+function cellAlign(spec: string): Align {
+  const left = spec.startsWith(':');
+  const right = spec.endsWith(':');
+  return left && right ? 'center' : right ? 'right' : 'left';
+}
+
+const ALIGN_CLASS: Record<Align, string> = { left: 'text-left', center: 'text-center', right: 'text-right' };
+
 export function MarkdownView({
   content,
   compact = false,
@@ -141,6 +165,39 @@ export function MarkdownView({
       continue;
     }
 
+    // Table — consumes the header and separator rows, so the loop advances.
+    if (isTableStart(lines, i)) {
+      const header = splitTableRow(line);
+      const aligns = splitTableRow(lines[i + 1]).map(cellAlign);
+      i += 2;
+      const body: string[][] = [];
+      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) { body.push(splitTableRow(lines[i])); i++; }
+      const cellClass = 'px-2.5 py-1.5 border border-[var(--vscode-panel-border)] align-top';
+      elements.push(
+        <div key={key++} className="my-2 overflow-x-auto">
+          <table className="text-xs border-collapse">
+            <thead>
+              <tr className="bg-[var(--vscode-editor-inactiveSelectionBackground)]">
+                {header.map((cell, c) => (
+                  <th key={c} className={`${cellClass} font-semibold ${ALIGN_CLASS[aligns[c] ?? 'left']}`}>{renderInline(cell, onLinkClick, highlightMentions)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, r) => (
+                <tr key={r}>
+                  {header.map((_, c) => (
+                    <td key={c} className={`${cellClass} ${ALIGN_CLASS[aligns[c] ?? 'left']}`}>{renderInline(row[c] ?? '', onLinkClick, highlightMentions)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
     // Horizontal rule
     if (line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
       elements.push(<hr key={key++} className="my-3 border-[var(--vscode-panel-border)]" />);
@@ -163,7 +220,8 @@ export function MarkdownView({
       !lines[i].startsWith('```') &&
       !lines[i].match(/^[\-\*] /) &&
       !lines[i].match(/^\d+\. /) &&
-      !lines[i].match(/^---+$/)
+      !lines[i].match(/^---+$/) &&
+      !isTableStart(lines, i)
     ) { paraLines.push(lines[i]); i++; }
     elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '), onLinkClick, highlightMentions)}</p>);
   }
