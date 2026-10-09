@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.10.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.9.0...claude-code-dashboard-v1.10.0) (2026-10-09)
+
+
+### Features
+
+* share context, lazy session turns, replies-only view and unified headers ([#44](https://github.com/jspw/Claude-Code-Dashboard/issues/44)) ([dfbc1c2](https://github.com/jspw/Claude-Code-Dashboard/commit/dfbc1c21f079220d94fbe13de577f60d58f917de))
+
 ## [1.9.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.8.0...claude-code-dashboard-v1.9.0) (2026-07-20)
 
 
