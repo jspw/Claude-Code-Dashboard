@@ -10,13 +10,13 @@ import { ThinkingRow } from './ThinkingRow';
 import { ToolCallRow } from './ToolCallRow';
 import { AgentCallBlock } from './AgentCallBlock';
 
-function AssistantMessageBody({ content }: { content: string }) {
+function AssistantMessageBody({ content, expanded }: { content: string; expanded: boolean }) {
   return (
     <div className="group relative pr-6 text-sm">
       <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <CopyButton text={content} />
       </div>
-      <ExpandableMarkdown content={content} />
+      <ExpandableMarkdown content={content} defaultExpanded={expanded} />
     </div>
   );
 }
@@ -72,7 +72,8 @@ export function ResponseGroup({ turns, projectRoot, repliesOnly = false }: {
       rows.push({ key: `${turn.id}-thinking`, kind: 'thought', node: <ThinkingRow thinking={turn.thinking} /> });
     }
     if (content) {
-      rows.push({ key: `${turn.id}-text`, kind: 'reply', node: <AssistantMessageBody content={content} /> });
+      // Replies only is for reading what Claude said, so show it in full.
+      rows.push({ key: `${turn.id}-text`, kind: 'reply', node: <AssistantMessageBody content={content} expanded={repliesOnly} /> });
     }
     for (const tc of turn.toolCalls) {
       rows.push({

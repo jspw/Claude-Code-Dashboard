@@ -114,6 +114,18 @@ describe('ResponseGroup — replies only', () => {
     expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
   });
 
+  it('shows replies in full rather than as a preview', () => {
+    const long = `${'word '.repeat(150)}THE END`;
+    const group = (repliesOnly: boolean) =>
+      <ResponseGroup repliesOnly={repliesOnly} turns={[makeTurn({ id: 'r1', role: 'assistant', content: long })]} />;
+    const { rerender } = render(group(false));
+    expect(screen.getByRole('button', { name: /Show more/ })).toBeInTheDocument();
+
+    rerender(group(true));
+    expect(screen.getByText(/THE END/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+  });
+
   it('still marks a response that had no reply text', () => {
     render(<ResponseGroup repliesOnly turns={[
       makeTurn({ role: 'assistant', content: '', toolCalls: [makeToolCall({ name: 'WebFetch', input: { url: 'https://x.dev' } })] }),
