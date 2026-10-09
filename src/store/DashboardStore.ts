@@ -247,14 +247,20 @@ export interface ProjectConfig {
   hooks: HookConfig[];
 }
 
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const TURN_CACHE_SIZE = 3;
+export const CACHE_SAVE_DELAY_MS = 2_000;
+
+interface CachedFile {
+  mtimeMs: number;
+  size: number;
+  session: Session;   // held without turns
+}
 
 interface CacheEntry {
-  cachedAt: number;
   project: Project;
-  sessions: Session[];
-  subagentSessions: Session[];
+  files: Record<string, CachedFile>;          // session JSONL name → parsed session
+  subagentFiles: Record<string, CachedFile>;  // subagents/*.jsonl name → parsed session
 }
 
 interface CacheFile {
@@ -298,25 +304,69 @@ export class DashboardStore extends EventEmitter {
     } catch { /* ignore corrupt cache */ }
   }
 
-  private saveCacheToDisk() {
+  private cacheSaveTimer?: NodeJS.Timeout;
+
+  /**
+   * Saves the cache once a burst of changes settles, off the extension host's
+   * critical path. Writing a per-process temp file and renaming it means another
+   * window never reads a half-written cache.
+   */
+  private scheduleCacheSave() {
     const cachePath = this.getCachePath();
     if (!cachePath) { return; }
-    try {
-      fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-      fs.writeFileSync(cachePath, JSON.stringify(this.cacheData));
-    } catch { /* ignore write errors */ }
+    if (this.cacheSaveTimer) { clearTimeout(this.cacheSaveTimer); }
+    this.cacheSaveTimer = setTimeout(async () => {
+      const tmpPath = `${cachePath}.${process.pid}.tmp`;
+      try {
+        await fs.promises.mkdir(path.dirname(cachePath), { recursive: true });
+        await fs.promises.writeFile(tmpPath, JSON.stringify(this.cacheData));
+        await fs.promises.rename(tmpPath, cachePath);
+      } catch { /* the cache is an optimisation; a failed save costs one re-parse */ }
+    }, CACHE_SAVE_DELAY_MS);
   }
 
-  private getProjectMaxMtime(projectDir: string): number {
+  /**
+   * One session file, reused from the cache while its mtime and size match and
+   * parsed otherwise — so a change re-parses that file alone. Held without turns.
+   */
+  private loadSessionFile(
+    dir: string,
+    file: string,
+    projectId: string,
+    previous: Record<string, CachedFile> | undefined,
+    into: Record<string, CachedFile>,
+    annotate: (filePath: string, session: Session) => Session = (_filePath, session) => session,
+  ): Session | null {
+    const filePath = path.join(dir, file);
+    let stat: fs.Stats;
+    try { stat = fs.statSync(filePath); } catch { return null; }
+
+    const hit = previous?.[file];
+    if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+      into[file] = hit;
+      return hit.session;
+    }
+
+    const parsed = this.sessionParser.parseFile(filePath, projectId);
+    if (!parsed) { return null; }
+    const session = annotate(filePath, { ...parsed, turns: [] });
+    into[file] = { mtimeMs: stat.mtimeMs, size: stat.size, session };
+    return session;
+  }
+
+  /** The first parent-session reference in a subagent log, if any. */
+  private readParentSessionId(filePath: string): string | null {
     try {
-      const files = fs.readdirSync(projectDir).filter(f => f.endsWith('.jsonl'));
-      let maxMtime = 0;
-      for (const file of files) {
-        const stat = fs.statSync(path.join(projectDir, file));
-        if (stat.mtimeMs > maxMtime) { maxMtime = stat.mtimeMs; }
+      for (const line of fs.readFileSync(filePath, 'utf-8').split('\n')) {
+        if (!line.trim()) { continue; }
+        try {
+          const entry = JSON.parse(line);
+          const pid = entry.parentSessionId ?? entry.parent_session_id ?? entry.parentId ?? null;
+          if (pid) { return String(pid); }
+        } catch { continue; }
       }
-      return maxMtime;
-    } catch { return Date.now(); } // force re-parse on error
+    } catch { /* unreadable: no parent */ }
+    return null;
   }
 
   private debouncedEmitUpdated() {
@@ -346,7 +396,7 @@ export class DashboardStore extends EventEmitter {
       if (!entry.isDirectory()) { continue; }
       await this.loadProject(entry.name, path.join(projectsDir, entry.name), liveResult);
     }
-    this.saveCacheToDisk();
+    this.scheduleCacheSave();
   }
 
   /** Check if a process with the given pid is still running */
@@ -385,7 +435,12 @@ export class DashboardStore extends EventEmitter {
    * Parse subagents/*.jsonl — stores the full sessions and returns a cost map
    * keyed by parent session ID (or '__unknown__') for cost attribution.
    */
-  private loadSubagentSessions(projectDir: string, encodedId: string): Map<string, number> {
+  private loadSubagentSessions(
+    projectDir: string,
+    encodedId: string,
+    previous: Record<string, CachedFile> | undefined,
+    into: Record<string, CachedFile>,
+  ): Map<string, number> {
     const costs = new Map<string, number>();
     const parsed: Session[] = [];
     const subagentsDir = path.join(projectDir, 'subagents');
@@ -394,30 +449,13 @@ export class DashboardStore extends EventEmitter {
       return costs;
     }
     try {
-      const files = fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'));
-      for (const file of files) {
-        const filePath = path.join(subagentsDir, file);
-
-        // Scan first lines for a parent session reference
-        let parentSessionId: string | null = null;
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          for (const line of content.split('\n')) {
-            if (!line.trim()) { continue; }
-            try {
-              const entry = JSON.parse(line);
-              const pid = entry.parentSessionId ?? entry.parent_session_id ?? entry.parentId ?? null;
-              if (pid) { parentSessionId = String(pid); break; }
-            } catch { continue; }
-          }
-        } catch { /* keep null */ }
-
-        const session = this.sessionParser.parseFile(filePath, encodedId);
-        if (session) {
-          parsed.push({ ...session, parentSessionId, turns: [] });
-          const key = parentSessionId ?? '__unknown__';
-          costs.set(key, (costs.get(key) ?? 0) + session.costUsd);
-        }
+      for (const file of fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'))) {
+        const session = this.loadSessionFile(subagentsDir, file, encodedId, previous, into,
+          (filePath, s) => ({ ...s, parentSessionId: this.readParentSessionId(filePath) }));
+        if (!session) { continue; }
+        parsed.push(session);
+        const key = session.parentSessionId ?? '__unknown__';
+        costs.set(key, (costs.get(key) ?? 0) + session.costUsd);
       }
     } catch { /* ignore */ }
     this.subagentSessions.set(encodedId, parsed);
@@ -432,24 +470,11 @@ export class DashboardStore extends EventEmitter {
       // Use provided live IDs or fetch them (e.g. when called from onFileChanged)
       if (!liveResult) { liveResult = this.getLiveSessionIds(); }
 
-      // ── Cache check ───────────────────────────────────────────────────────
-      const maxMtime = this.getProjectMaxMtime(projectDir);
-      const cached   = this.cacheData.entries[encodedId];
-      if (cached && cached.cachedAt >= maxMtime) {
-        // Re-apply live detection (runtime state, cannot be cached)
-        const sessions = cached.sessions.map(s => ({
-          ...s,
-          isActiveSession: liveResult!.available ? liveResult!.ids.has(s.id) : s.isActiveSession,
-        }));
-        const isActive = sessions.some(s => s.isActiveSession);
-        this.projects.set(encodedId, { ...cached.project, isActive });
-        this.sessions.set(encodedId, sessions);
-        this.subagentSessions.set(encodedId, cached.subagentSessions ?? []);
-        return;
-      }
-
-      // ── Parse ─────────────────────────────────────────────────────────────
-      const subagentCosts = this.loadSubagentSessions(projectDir, encodedId);
+      // Unchanged files come from the cache; only changed ones are parsed.
+      const previous = this.cacheData.entries[encodedId];
+      const files: Record<string, CachedFile> = {};
+      const subagentFiles: Record<string, CachedFile> = {};
+      const subagentCosts = this.loadSubagentSessions(projectDir, encodedId, previous?.subagentFiles, subagentFiles);
 
       let totalTokens = 0;
       let totalCostUsd = 0;
@@ -459,20 +484,22 @@ export class DashboardStore extends EventEmitter {
       const parsedSessions: Session[] = [];
 
       for (const file of sessionFiles) {
-        const filePath = path.join(projectDir, file);
-        const session = this.sessionParser.parseFile(filePath, encodedId);
-        if (session) {
-          if (!resolvedCwd && session.cwd) { resolvedCwd = session.cwd; }
-          if (liveResult.available) {
-            (session as any).isActiveSession = liveResult.ids.has(session.id);
-          }
-          parsedSessions.push({ ...session, turns: [] });
-          totalTokens += session.totalTokens;
-          totalCostUsd += session.costUsd;
-          sessionCount++;
-          const sessionLatest = session.endTime ?? session.digest.lastTurnAt ?? session.startTime;
-          if (sessionLatest > lastActive) { lastActive = sessionLatest; }
-        }
+        const loaded = this.loadSessionFile(projectDir, file, encodedId, previous?.files, files);
+        if (!loaded) { continue; }
+        // A fresh copy per load: subagent costs are attributed onto it below,
+        // and the cached original must not accumulate them across reloads.
+        const session: Session = {
+          ...loaded,
+          subagentCostUsd: 0,
+          isActiveSession: liveResult.available ? liveResult.ids.has(loaded.id) : loaded.isActiveSession,
+        };
+        if (!resolvedCwd && session.cwd) { resolvedCwd = session.cwd; }
+        parsedSessions.push(session);
+        totalTokens += session.totalTokens;
+        totalCostUsd += session.costUsd;
+        sessionCount++;
+        const sessionLatest = session.endTime ?? session.digest.lastTurnAt ?? session.startTime;
+        if (sessionLatest > lastActive) { lastActive = sessionLatest; }
       }
 
       // Attribute subagent costs: use parentSessionId when known, else newest session
@@ -508,8 +535,7 @@ export class DashboardStore extends EventEmitter {
       this.sessions.set(encodedId, parsedSessions);
 
       // Update cache entry for this project
-      const cachedSubagents = this.subagentSessions.get(encodedId) ?? [];
-      this.cacheData.entries[encodedId] = { cachedAt: Date.now(), project, sessions: parsedSessions, subagentSessions: cachedSubagents };
+      this.cacheData.entries[encodedId] = { project, files, subagentFiles };
     } catch (e) {
       console.error(`Failed to load project ${encodedId}:`, e);
     }
@@ -984,7 +1010,7 @@ export class DashboardStore extends EventEmitter {
     if (projectId) {
       const projectDir = path.join(projectsDir, projectId);
       await this.loadProject(projectId, projectDir);
-      this.saveCacheToDisk();
+      this.scheduleCacheSave();
       this.debouncedEmitUpdated();
     }
   }

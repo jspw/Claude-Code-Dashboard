@@ -1,7 +1,8 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { execSync } from 'child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DashboardStore } from '../DashboardStore';
+import { CACHE_SAVE_DELAY_MS, DashboardStore } from '../DashboardStore';
 import { createPopulatedStore } from '../../__tests__/helpers/store-helpers';
 import { makeProject, makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/sessions';
 import { digestTurns } from '../../parsers/sessionDigest';
@@ -559,21 +560,21 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].subagentCostUsd).toBe(0.3);
     expect(store.getSubagentSessions('demo')).toHaveLength(1);
     expect(fs.unlinkSync).toHaveBeenCalledWith('/claude/sessions/dead.json');
-    expect(fs.mkdirSync).toHaveBeenCalledWith('/cache', { recursive: true });
-    expect(fs.writeFileSync).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CACHE_SAVE_DELAY_MS);
+    expect(fs.promises.mkdir).toHaveBeenCalledWith('/cache', { recursive: true });
+    expect(fs.promises.writeFile).toHaveBeenCalled();
 
     parseFile.mockClear();
     vi.mocked(fs.readFileSync).mockImplementation((target) => {
       const value = String(target);
       if (value === '/cache/project-cache.json') {
         return JSON.stringify({
-          version: 2,
+          version: 3,
           entries: {
             demo: {
-              cachedAt: NOW + 5000,
               project: makeProject({ id: 'demo', name: 'demo', path: '/workspace/demo', isActive: false }),
-              sessions: [makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false })],
-              subagentSessions: [],
+              files: { 'session.jsonl': { mtimeMs: NOW - 2000, session: makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false, turns: [] }) } },
+              subagentFiles: { 'child.jsonl': { mtimeMs: NOW, session: makeSession({ id: 'cached-child', projectId: 'demo', turns: [] }) } },
             },
           },
         }) as ReturnType<typeof fs.readFileSync>;
@@ -655,6 +656,84 @@ describe('DashboardStore', () => {
       vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(makeSession({ turns: [makeTurn({ id: 'child' })] }));
 
       expect(store.getSessionTurns('p1', 'sub1').map(t => t.id)).toEqual(['child']);
+    });
+  });
+
+  describe('cache', () => {
+    it('re-parses only the session file that changed', async () => {
+      const store = new DashboardStore('/claude');
+      const mtimes: Record<string, number> = { 'a.jsonl': 1, 'b.jsonl': 1 };
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockImplementation(() => Object.keys(mtimes) as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockImplementation(p => ({ mtimeMs: mtimes[path.basename(String(p))], size: 10 }) as fs.Stats);
+      const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockImplementation((file: unknown) => makeSession({ id: path.basename(String(file), '.jsonl') }));
+      const live = { ids: new Set<string>(), available: true };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      mtimes['b.jsonl'] = 2;
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+
+      expect(parseFile).toHaveBeenCalledTimes(3);
+      expect(parseFile).toHaveBeenLastCalledWith('/claude/projects/p1/b.jsonl', 'p1');
+      expect(store.getSessions('p1').map(s => s.id).sort()).toEqual(['a', 'b']);
+    });
+
+    it('does not double-count subagent cost when a cached session is reused', async () => {
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockImplementation(p => String(p).endsWith('/subagents'));
+      vi.mocked(fs.readdirSync).mockImplementation(p =>
+        (String(p).endsWith('/subagents') ? ['child.jsonl'] : ['main.jsonl']) as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.mocked(fs.readFileSync).mockReturnValue('' as ReturnType<typeof fs.readFileSync>);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation((file: unknown) =>
+        String(file).endsWith('child.jsonl') ? makeSession({ id: 'child', costUsd: 0.3 }) : makeSession({ id: 'main', costUsd: 1 }));
+      const live = { ids: new Set<string>(), available: true };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+
+      expect(store.getSessions('p1')[0].subagentCostUsd).toBe(0.3);
+    });
+
+    it('ignores a cache written by an older version', () => {
+      const store = new DashboardStore('/claude', '/cache');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ version: 2, entries: { p1: {} } }) as ReturnType<typeof fs.readFileSync>);
+
+      (store as any).loadCacheFromDisk();
+      expect((store as any).cacheData).toEqual({ version: 3, entries: {} });
+    });
+
+    it('survives a corrupt cache file', () => {
+      const store = new DashboardStore('/claude', '/cache');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue('{half-written' as ReturnType<typeof fs.readFileSync>);
+
+      expect(() => (store as any).loadCacheFromDisk()).not.toThrow();
+      expect((store as any).cacheData).toEqual({ version: 3, entries: {} });
+    });
+
+    it('writes the cache once per burst of changes, atomically and without turns', async () => {
+      const store = new DashboardStore('/claude', '/cache');
+      (store as any).cacheData.entries.p1 = {
+        project: makeProject(),
+        files: { 's.jsonl': { mtimeMs: 1, size: 1, session: makeSession({ turns: [] }) } },
+        subagentFiles: {},
+      };
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.promises.rename).mockResolvedValue(undefined);
+      vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
+
+      (store as any).scheduleCacheSave();
+      (store as any).scheduleCacheSave();
+      await vi.advanceTimersByTimeAsync(CACHE_SAVE_DELAY_MS);
+
+      expect(fs.promises.writeFile).toHaveBeenCalledTimes(1);
+      const [tmpPath, body] = vi.mocked(fs.promises.writeFile).mock.calls[0];
+      expect(String(tmpPath)).toMatch(/^\/cache\/project-cache\.json\.\d+\.tmp$/);
+      expect(fs.promises.rename).toHaveBeenCalledWith(tmpPath, '/cache/project-cache.json');
+      expect(String(body)).not.toMatch(/"turns":\[\{/);
     });
   });
 });
