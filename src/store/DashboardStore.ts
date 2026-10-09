@@ -341,12 +341,18 @@ export class DashboardStore extends EventEmitter {
     let stat: fs.Stats;
     try { stat = fs.statSync(filePath); } catch { return null; }
 
+    // A session still active when parsed carries "now"-relative fields (no
+    // endTime or duration, active flag set); keep re-parsing it until it settles,
+    // or a session that finished would stay frozen in its live snapshot.
     const hit = previous?.[file];
-    if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+    if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size && !hit.session.isActiveSession) {
       into[file] = hit;
       return hit.session;
     }
 
+    // Re-parsing means the file changed; any turns read from it before are stale,
+    // whether or not the watcher reported the change.
+    this.turnCache.delete(filePath);
     const parsed = this.sessionParser.parseFile(filePath, projectId);
     if (!parsed) { return null; }
     const session = annotate(filePath, { ...parsed, turns: [] });

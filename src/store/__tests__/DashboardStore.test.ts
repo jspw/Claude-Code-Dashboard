@@ -696,6 +696,40 @@ describe('DashboardStore', () => {
       expect(store.getSessions('p1')[0].subagentCostUsd).toBe(0.3);
     });
 
+    it('re-parses a session that was still active when cached, so it can finish', async () => {
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue(['a.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockReturnValueOnce(makeSession({ id: 'a', isActiveSession: true, endTime: null, durationMs: null }))
+        .mockReturnValueOnce(makeSession({ id: 'a', isActiveSession: false, endTime: 5, durationMs: 60_000 }));
+      const live = { ids: new Set<string>(), available: false };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+
+      expect(store.getSessions('p1')[0]).toMatchObject({ isActiveSession: false, endTime: 5, durationMs: 60_000 });
+    });
+
+    it('drops cached turns when a reload re-parses the file, even without a watcher event', async () => {
+      const store = new DashboardStore('/claude');
+      let mtime = 1;
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue(['s1.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockImplementation(() => ({ mtimeMs: mtime, size: 10 }) as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation(() =>
+        makeSession({ id: 's1', sourceFile: '/claude/projects/p1/s1.jsonl', turns: [makeTurn({ id: `v${mtime}` })] }));
+      const live = { ids: new Set<string>(), available: true };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['v1']);
+
+      mtime = 2;
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['v2']);
+    });
+
     it('ignores a cache written by an older version', () => {
       const store = new DashboardStore('/claude', '/cache');
       vi.mocked(fs.existsSync).mockReturnValue(true);
