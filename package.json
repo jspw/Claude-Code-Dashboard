@@ -2,7 +2,7 @@
   "name": "claude-code-dashboard",
   "displayName": "Claude Code Dashboard",
   "description": "Real-time dashboard for all your Claude Code projects — sessions, usage, tokens, and more.",
-  "version": "1.6.1",
+  "version": "1.9.0",
   "publisher": "jspw",
   "license": "AGPL-3.0-only",
   "icon": "images/icon.png",
@@ -105,7 +105,11 @@
         },
         "claudeDashboard.statusBar": {
           "type": "string",
-          "enum": ["compact", "full", "off"],
+          "enum": [
+            "compact",
+            "full",
+            "off"
+          ],
           "default": "compact",
           "description": "Status bar display: compact (active count + today's cost), full (adds label and tokens), or off."
         },
@@ -145,7 +149,7 @@
     "@vitest/coverage-v8": "^3.2.4",
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.20.0",
-    "ovsx": "^0.10.9",
+    "ovsx": "^1.2.0",
     "typescript": "^5.3.0",
     "vitest": "^3.2.4"
   }

@@ -11,6 +11,37 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.9.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.8.0...claude-code-dashboard-v1.9.0) (2026-07-20)
+
+
+### Features
+
+* **conversation:** redesign session timeline in claude-code style ([#39](https://github.com/jspw/Claude-Code-Dashboard/issues/39)) ([0e906ef](https://github.com/jspw/Claude-Code-Dashboard/commit/0e906ef26a350a5d4ab980947687e66764e12632))
+
+## [1.8.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.7.0...claude-code-dashboard-v1.8.0) (2026-07-18)
+
+
+### Features
+
+* **ci:** add git hooks ([124e271](https://github.com/jspw/Claude-Code-Dashboard/commit/124e271d083c76c135f69b799714cee00b3f4f78))
+* **home:** clean up designs ([4db4c7e](https://github.com/jspw/Claude-Code-Dashboard/commit/4db4c7ea83977db18609c29da325ae4260ea5ed5))
+* **home:** clean up designs ([10dfa90](https://github.com/jspw/Claude-Code-Dashboard/commit/10dfa903e9693e459f74744b901679cfc59efa8e))
+
+
+### Bug Fixes
+
+* **hooks:** set GIT_PAGER=false and PAGER=false ([c48ec72](https://github.com/jspw/Claude-Code-Dashboard/commit/c48ec727e903deb1e3bb2aa120f4d523229d37c0))
+* **test:** increase test coverage ([ca1fb4c](https://github.com/jspw/Claude-Code-Dashboard/commit/ca1fb4c003d01fb18a15a23d3ab85f879427b6f6))
+* **unit-tests:** fix coverage issue ([ad87aed](https://github.com/jspw/Claude-Code-Dashboard/commit/ad87aed0290381559beb011e9b5e2db0e698bca2))
+
+## [1.7.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.6.1...claude-code-dashboard-v1.7.0) (2026-07-16)
+
+
+### Features
+
+* **sessions:** surface @-tagged file attachments in turn view ([e264d0d](https://github.com/jspw/Claude-Code-Dashboard/commit/e264d0d70b3a7fcc886e032098b629cd7216629c))
+* **sessions:** surface @-tagged file attachments in turn view ([6969b83](https://github.com/jspw/Claude-Code-Dashboard/commit/6969b83a481872df2f972037096ae831795d069c))
+
 ## [1.6.1](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.6.0...claude-code-dashboard-v1.6.1) (2026-04-01)
 
 
