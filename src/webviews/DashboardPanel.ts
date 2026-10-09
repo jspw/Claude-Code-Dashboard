@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DashboardStore } from '../store/DashboardStore';
+import { DashboardStore, LiveEvent } from '../store/DashboardStore';
 import { getWebviewContent } from './getWebviewContent';
 
 function getBudgetStatus(store: DashboardStore): { budgetUsd: number; spentUsd: number; pct: number } | null {
@@ -35,13 +35,20 @@ export class DashboardPanel {
     this.context = context;
     this.updateContent(context, store);
 
-    store.on('updated', () => {
+    const onUpdated = () => {
       this.panel.webview.postMessage({ type: 'stateUpdate', payload: this.buildState(store) });
-    });
-
-    store.on('liveEvent', (event) => {
+    };
+    const onLiveEvent = (event: LiveEvent) => {
       this.panel.webview.postMessage({ type: 'liveEvent', payload: event });
-    });
+    };
+    store.on('updated', onUpdated);
+    store.on('liveEvent', onLiveEvent);
+    // A closed panel's webview throws on access, so a listener left behind would
+    // abort the emit for every listener registered after it.
+    this.disposables.push(
+      { dispose: () => store.off('updated', onUpdated) },
+      { dispose: () => store.off('liveEvent', onLiveEvent) },
+    );
 
     panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === 'openProject') {

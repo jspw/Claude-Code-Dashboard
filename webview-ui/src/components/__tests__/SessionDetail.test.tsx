@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '../../__tests__/helpers/render-helpers';
 import { makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/test-data';
+import { mockPostMessage } from '../../__tests__/setup';
 import SessionDetail, { modelBadgeColor, modelLabel, parseSystemContent, stripAnsi } from '../SessionDetail';
 
 describe('SessionDetail', () => {
@@ -266,5 +267,54 @@ describe('SessionDetail', () => {
     expect(screen.queryByText(longOutput)).not.toBeInTheDocument();
     fireEvent.click(screen.getByTitle('Show full output'));
     expect(screen.getByText(longOutput)).toBeInTheDocument();
+  });
+});
+
+describe('SessionDetail — files touched', () => {
+  const manyFiles = Array.from({ length: 20 }, (_, i) => `/src/file-${i}.ts`);
+  const renderWithFiles = (filesModified: string[]) => render(
+    <SessionDetail session={makeSession({ filesModified, filesCreated: [], turns: [] })} turns={[]} loading={false} />
+  );
+
+  it('previews a long list instead of letting it take over the panel', () => {
+    renderWithFiles(manyFiles);
+
+    expect(screen.getByText('Files touched · 20')).toBeInTheDocument();
+    expect(screen.getByText('file-7.ts')).toBeInTheDocument();
+    expect(screen.queryByText('file-8.ts')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+12 more' })).toBeInTheDocument();
+  });
+
+  it('expands to every file and collapses back', () => {
+    renderWithFiles(manyFiles);
+
+    fireEvent.click(screen.getByRole('button', { name: '+12 more' }));
+    expect(screen.getByText('file-19.ts')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.queryByText('file-19.ts')).not.toBeInTheDocument();
+  });
+
+  it('opens a file when its chip is clicked', () => {
+    renderWithFiles(['/repo/src/a.ts']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'openFile', path: '/repo/src/a.ts' });
+  });
+
+  it('tells same-named files apart by their folder', () => {
+    renderWithFiles(['/repo/src/share/index.ts', '/repo/src/parsers/index.ts', '/repo/src/a.ts']);
+
+    expect(screen.getByText('share/index.ts')).toBeInTheDocument();
+    expect(screen.getByText('parsers/index.ts')).toBeInTheDocument();
+    expect(screen.getByText('a.ts')).toBeInTheDocument();
+  });
+
+  it('shows a short list in full, with no toggle', () => {
+    renderWithFiles(['/src/a.ts', '/src/b.ts']);
+
+    expect(screen.getByText('Files touched · 2')).toBeInTheDocument();
+    expect(screen.getByText('b.ts')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /more|Show less/ })).not.toBeInTheDocument();
   });
 });

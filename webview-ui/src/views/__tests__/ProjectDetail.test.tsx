@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '../../__tests__/helpers/render-helpers';
 import { mockPostMessage } from '../../__tests__/setup';
 import { makeProject, makeSession } from '../../__tests__/fixtures/test-data';
@@ -276,5 +276,53 @@ describe('ProjectDetail view', () => {
     expect(screen.getByText('No MCP servers configured.')).toBeInTheDocument();
     expect(screen.getByText('No memory files found.')).toBeInTheDocument();
     expect(screen.getByText('No automation configured.')).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail — loading a session', () => {
+  const FAILED = "Couldn't load this session's conversation.";
+  const sessions = [makeSession({ id: 's1', sessionSummary: 'First summary' })];
+  const renderSelected = () => render(<ProjectDetail project={makeProject()} sessions={sessions} initialSessionId="s1" />);
+  const reply = () => act(async () => {
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'sessionTurns',
+      sessionId: 's1',
+      turns: [{ id: 't1', role: 'assistant', content: 'Loaded', inputTokens: 0, outputTokens: 0, toolCalls: [], timestamp: 0 }],
+    } }));
+  });
+
+  // Only the load timeout; faking requestAnimationFrame would run jsdom-missing scrollIntoView.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('offers a retry instead of loading forever when no reply comes', () => {
+    renderSelected();
+    expect(screen.getByText('Loading turns...')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(15_000); });
+    expect(screen.getByText(FAILED)).toBeInTheDocument();
+
+    mockPostMessage.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'getSessionTurns', sessionId: 's1' });
+    expect(screen.getByText('Loading turns...')).toBeInTheDocument();
+  });
+
+  it('does not time out once the turns have arrived', async () => {
+    renderSelected();
+    await reply();
+
+    act(() => { vi.advanceTimersByTime(15_000); });
+    expect(screen.getByText('Loaded')).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+  });
+
+  it('still shows turns that arrive after the timeout', async () => {
+    renderSelected();
+    act(() => { vi.advanceTimersByTime(15_000); });
+
+    await reply();
+    expect(screen.getByText('Loaded')).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
   });
 });

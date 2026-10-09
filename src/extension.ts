@@ -10,6 +10,8 @@ import { StatusBarProvider } from './providers/StatusBarProvider';
 import { DashboardPanel } from './webviews/DashboardPanel';
 import { ProjectPanel } from './webviews/ProjectPanel';
 import { AlertManager } from './alerts/AlertManager';
+import { shareContext } from './share/shareContext';
+import type { ShareScope } from './share/types';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -54,6 +56,9 @@ export async function activate(context: vscode.ExtensionContext) {
       await hookManager.removeHooks(context.globalState);
       await context.globalState.update('hooksConsent', 'declined');
       vscode.window.showInformationMessage('Live tracking disabled. Dashboard hooks were removed from ~/.claude/settings.json.');
+    }),
+    vscode.commands.registerCommand('claudeDashboard.shareContext', async (projectId: string, scope: ShareScope, sessionId?: string) => {
+      await shareContext(store, projectId, scope, sessionId);
     }),
     vscode.commands.registerCommand('claudeDashboard.exportSessions', async (projectId: string, format: 'json' | 'csv') => {
       const project = store.getProject(projectId);

@@ -1,4 +1,4 @@
-import { Project, Session, Turn, ToolCall, LiveEvent } from '../../store/DashboardStore';
+import { Project, Session, Turn, ToolCall, LiveEvent, ProjectConfig, MemoryFile } from '../../store/DashboardStore';
 
 let _id = 0;
 const uid = () => `test-${++_id}`;
@@ -74,6 +74,30 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     totalTokens: 50000,
     totalCostUsd: 1.5,
     techStack: ['Node.js', 'TypeScript'],
+    ...overrides,
+  };
+}
+
+export function makeMemoryFile(overrides: Partial<MemoryFile> = {}): MemoryFile {
+  return {
+    fileName: 'commit-style.md',
+    name: 'commit-style',
+    description: 'User prefers conventional commits.',
+    type: 'feedback',
+    content: 'Scope commits by area.',
+    ...overrides,
+  };
+}
+
+export function makeProjectConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
+  return {
+    claudeMd: '# Test Project\n\nUse tabs, not spaces.',
+    mcpServers: {},
+    projectSettings: {},
+    commands: [],
+    plans: [],
+    memory: { index: null, files: [] },
+    hooks: [],
     ...overrides,
   };
 }

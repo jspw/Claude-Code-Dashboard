@@ -37,17 +37,30 @@ export class ProjectPanel {
     this.panel = panel;
     this.updateContent(context, store, projectId, initialSessionId);
 
-    store.on('updated', () => {
+    const onUpdated = () => {
       this.panel.webview.postMessage({ type: 'stateUpdate', payload: this.buildState(store, projectId) });
-    });
+    };
+    store.on('updated', onUpdated);
+    // A closed panel's webview throws on access, so a listener left behind would
+    // abort the emit for every listener registered after it.
+    this.disposables.push({ dispose: () => store.off('updated', onUpdated) });
 
     panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === 'exportSessions') {
         await vscode.commands.executeCommand('claudeDashboard.exportSessions', projectId, msg.format ?? 'json');
       }
+      if (msg.type === 'shareContext') {
+        await vscode.commands.executeCommand(
+          'claudeDashboard.shareContext',
+          projectId,
+          msg.scope ?? 'project',
+          msg.sessionId
+        );
+      }
       if (msg.type === 'getSessionTurns') {
-        const sessions = store.getSessions(projectId);
-        const session = sessions.find(s => s.id === msg.sessionId);
+        // The Sessions tab can list subagent sessions too, so look there as well.
+        const session = store.getSessions(projectId).find(s => s.id === msg.sessionId)
+          ?? store.getSubagentSessions(projectId).find(s => s.id === msg.sessionId);
         this.panel.webview.postMessage({
           type: 'sessionTurns',
           sessionId: msg.sessionId,

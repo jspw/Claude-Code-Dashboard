@@ -6,6 +6,7 @@ import { toolColor } from '../utils/toolColor';
 import { MarkdownView, CommandBlock, MentionText } from '../components/MarkdownView';
 import SessionDetail, { modelLabel, modelBadgeColor } from '../components/SessionDetail';
 import WeeklyStatsTab from '../components/WeeklyStatsTab';
+import ShareContextButton from '../components/ShareContextButton';
 
 interface Props {
   project: Project;
@@ -20,6 +21,8 @@ interface Props {
 }
 
 type Tab = 'overview' | 'sessions' | 'activity' | 'setup' | 'work';
+
+const TURNS_TIMEOUT_MS = 15_000;
 
 const TAB_LABELS: Array<{ key: Tab; label: string; description: string }> = [
   { key: 'overview', label: 'Overview', description: 'At-a-glance stats, recent sessions, and quick links.' },
@@ -63,23 +66,45 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
   const sessionDetailRef = useRef<HTMLElement | null>(null);
   const sorted = [...(sessions ?? [])].sort((a, b) => b.startTime - a.startTime);
 
-  const selectSession = useCallback((session: Session) => {
-    setSelectedSession(session);
+  // A reply normally lands well within a second. The timeout only catches one
+  // that never comes, so the panel offers a retry instead of loading forever.
+  const [turnsFailed, setTurnsFailed] = useState(false);
+  const turnsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTurnsTimeout = () => {
+    if (turnsTimeout.current) { clearTimeout(turnsTimeout.current); turnsTimeout.current = null; }
+  };
+  useEffect(() => clearTurnsTimeout, []);
+
+  const requestTurns = useCallback((sessionId: string) => {
     setTurns([]);
     setTurnsLoading(true);
-    vscode.postMessage({ type: 'getSessionTurns', sessionId: session.id });
+    setTurnsFailed(false);
+    clearTurnsTimeout();
+    turnsTimeout.current = setTimeout(() => {
+      setTurnsLoading(false);
+      setTurnsFailed(true);
+    }, TURNS_TIMEOUT_MS);
+    vscode.postMessage({ type: 'getSessionTurns', sessionId });
+  }, []);
+
+  const selectSession = useCallback((session: Session) => {
+    setSelectedSession(session);
+    requestTurns(session.id);
     requestAnimationFrame(() => {
       sessionDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-  }, []);
+  }, [requestTurns]);
 
   // Turn responses + deep-link session selection from the dashboard Sessions tab.
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'sessionTurns' && msg.sessionId === selectedSession?.id) {
+        // Accepted even after a timeout: a late reply still beats a retry.
+        clearTurnsTimeout();
         setTurns(msg.turns ?? []);
         setTurnsLoading(false);
+        setTurnsFailed(false);
       }
       if (msg.type === 'selectSession' && msg.sessionId) {
         const target = (sessions ?? []).find(s => s.id === msg.sessionId);
@@ -314,7 +339,14 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                     </svg>
                     All sessions
                   </button>
-                  <SessionDetail key={selectedSession.id} session={selectedSession} turns={turns} loading={turnsLoading} />
+                  <SessionDetail
+                    key={selectedSession.id}
+                    session={selectedSession}
+                    turns={turns}
+                    loading={turnsLoading}
+                    failed={turnsFailed}
+                    onRetry={() => requestTurns(selectedSession.id)}
+                  />
                 </>
               ) : (
                 <div className="rounded-lg border border-dashed border-[var(--vscode-panel-border)] opacity-50 text-sm text-center px-4 py-12">
@@ -416,6 +448,21 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
         {/* ── Setup tab ── */}
         {activeTab === 'setup' && (
           <div className="space-y-8">
+            <section>
+              <h3 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Share with other agents</h3>
+              <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm">Generate an <span className="font-mono text-xs">AGENTS.md</span> from this project's guide, memory, commands, and MCP setup.</div>
+                    <div className="text-xs opacity-60 mt-1">
+                      Session transcripts go to <span className="font-mono">.agent-context/</span> with an index. Codex and other agents load these automatically — nothing is committed for you.
+                    </div>
+                  </div>
+                  <ShareContextButton scope="project" />
+                </div>
+              </div>
+            </section>
+
             <section>
               <h3 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Claude guide (CLAUDE.md)</h3>
               <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]">
