@@ -7,6 +7,7 @@ import { MarkdownView, CommandBlock, MentionText } from '../components/MarkdownV
 import SessionDetail, { modelLabel, modelBadgeColor } from '../components/SessionDetail';
 import WeeklyStatsTab from '../components/WeeklyStatsTab';
 import ShareContextButton from '../components/ShareContextButton';
+import TabButton from '../components/TabButton';
 
 interface Props {
   project: Project;
@@ -184,7 +185,6 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
 
   const hasWork = plans.length > 0 || (projectTodos?.length ?? 0) > 0;
   const visibleTabs = TAB_LABELS.filter(t => t.key !== 'work' || hasWork);
-  const activeMeta = TAB_LABELS.find(t => t.key === activeTab) ?? TAB_LABELS[0];
 
   useEffect(() => {
     if (plans.length === 0) { setSelectedPlanFileName(null); return; }
@@ -207,51 +207,60 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
     if (linkedFile) { focusMemoryFile(linkedFile.fileName); }
   }, [focusMemoryFile, memoryFiles]);
 
+  // An open conversation needs the vertical space; every other view gets a roomier header.
+  const compactHeader = activeTab === 'sessions' && selectedSession !== null;
+  const projectPath = (
+    <button
+      onClick={() => vscode.postMessage({ type: 'openFolder', path: project.path })}
+      className={`min-w-0 text-xs opacity-50 hover:opacity-100 hover:underline font-mono transition-opacity text-left truncate ${compactHeader ? 'flex-1' : 'max-w-full'}`}
+      title={`Open ${project.path}`}
+    >
+      {project.path}
+    </button>
+  );
+  const techBadges = project.techStack?.map(t => (
+    <span key={t} className="text-xs bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] px-2 py-0.5 rounded">{t}</span>
+  ));
+
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start gap-3 mb-2">
-          {project.isActive && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse mt-2" />}
-          <h1 className="text-2xl font-bold">{project.name}</h1>
-          {project.isActive && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">live</span>}
-          <div className="ml-auto flex flex-wrap gap-2">
+    <div className={`px-4 pb-4 sm:px-6 sm:pb-6 max-w-5xl mx-auto ${compactHeader ? 'space-y-3' : 'space-y-5'}`}>
+      {/* Header + tabs: one sticky bar so navigation stays in reach while scrolling */}
+      <header className={`sticky top-0 z-20 bg-[var(--vscode-editor-background)] border-b border-[var(--vscode-panel-border)] ${compactHeader ? 'pt-3' : 'pt-5 sm:pt-6'}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          {project.isActive && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />}
+          <h1 className={`font-bold truncate min-w-0 ${compactHeader ? 'text-lg' : 'text-2xl'}`}>{project.name}</h1>
+          {project.isActive && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full shrink-0">live</span>}
+          {compactHeader ? (
+            <>
+              {projectPath}
+              <div className="hidden md:flex gap-1 shrink-0">{techBadges}</div>
+            </>
+          ) : (
+            <div className="flex-1" />
+          )}
+          <div className="shrink-0">
             <ExportMenu />
           </div>
         </div>
-        <button
-          onClick={() => vscode.postMessage({ type: 'openFolder', path: project.path })}
-          className="text-xs opacity-50 hover:opacity-100 hover:underline font-mono transition-opacity text-left truncate max-w-full"
-          title={`Open ${project.path}`}
-        >
-          {project.path}
-        </button>
-        <div className="flex flex-wrap gap-2 mt-3">
-          {project.techStack?.map(t => (
-            <span key={t} className="text-xs bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] px-2 py-0.5 rounded">{t}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab navigation */}
-      <nav className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
-        <div className="px-2 pt-2">
-          <div className="flex gap-1 overflow-x-auto pb-2">
-            {visibleTabs.map(tab => (
-              <TabButton
-                key={tab.key}
-                label={tab.label}
-                badge={tabBadges[tab.key]}
-                active={activeTab === tab.key}
-                onClick={() => setActiveTab(tab.key)}
-              />
-            ))}
+        {!compactHeader && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 min-w-0">
+            {projectPath}
+            {techBadges && techBadges.length > 0 && <div className="flex flex-wrap gap-1.5">{techBadges}</div>}
           </div>
-        </div>
-        <div className="px-4 py-3 border-t border-[var(--vscode-panel-border)]">
-          <p className="text-sm opacity-60">{activeMeta.description}</p>
-        </div>
-      </nav>
+        )}
+        <nav className={`flex gap-1 overflow-x-auto ${compactHeader ? 'mt-1' : 'mt-4'}`} aria-label="Project sections">
+          {visibleTabs.map(tab => (
+            <TabButton
+              key={tab.key}
+              label={tab.label}
+              description={tab.description}
+              badge={tabBadges[tab.key]}
+              active={activeTab === tab.key}
+              onClick={() => setActiveTab(tab.key)}
+            />
+          ))}
+        </nav>
+      </header>
 
       <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
         {/* ── Overview tab ── */}
@@ -329,7 +338,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
               )}
             </section>
 
-            <section ref={sessionDetailRef} className={`min-w-0 overflow-hidden xl:col-span-2 ${selectedSession ? '' : 'hidden xl:block'}`}>
+            <section ref={sessionDetailRef} className={`min-w-0 overflow-hidden scroll-mt-24 xl:col-span-2 ${selectedSession ? '' : 'hidden xl:block'}`}>
               {selectedSession ? (
                 <>
                   <button
@@ -501,7 +510,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                     <MemoryReferenceList title="Memory Files" detail={`${memoryFiles.length} file${memoryFiles.length !== 1 ? 's' : ''} across ${memoryTypeCount} categor${memoryTypeCount !== 1 ? 'ies' : 'y'}.`} files={memoryFiles} selectedFileName={selectedMemory?.fileName ?? null} onSelect={focusMemoryFile} />
                   )}
                   {selectedMemory && (
-                    <div ref={memoryPreviewRef}>
+                    <div ref={memoryPreviewRef} className="scroll-mt-24">
                       <MemoryPreviewPanel memory={selectedMemory} referenced={memoryReferenceNameSet.has(normalizeMemoryFileName(selectedMemory.fileName))} />
                     </div>
                   )}
@@ -734,23 +743,6 @@ function EmptyPanel({ title, detail, compact = false }: { title: string; detail:
       <div className="text-sm opacity-50">{title}</div>
       <div className="text-xs opacity-40 mt-2 max-w-xl mx-auto">{detail}</div>
     </div>
-  );
-}
-
-function TabButton({ label, badge, active, onClick }: { label: string; badge: string | null; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-t-lg rounded-b-md px-3.5 py-2 text-sm border transition-colors whitespace-nowrap ${active
-          ? 'border-[var(--vscode-panel-border)] border-b-transparent bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] shadow-[inset_0_-2px_0_0_var(--vscode-button-background)]'
-          : 'border-transparent bg-transparent text-[var(--vscode-editor-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)]'
-        }`}
-    >
-      <span>{label}</span>
-      {badge && (
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${active ? 'bg-black/20 text-current' : 'bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)]'}`}>{badge}</span>
-      )}
-    </button>
   );
 }
 

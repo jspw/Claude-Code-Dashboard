@@ -28,6 +28,7 @@ import EfficiencyCards from '../components/EfficiencyCards';
 import RecentChanges from '../components/RecentChanges';
 import ProductivityChart from '../components/ProductivityChart';
 import SessionsBrowser from '../components/SessionsBrowser';
+import TabButton from '../components/TabButton';
 
 interface Props {
   projects: Project[];
@@ -97,7 +98,6 @@ export default function Dashboard({
   const [range, setRange] = useState<RangeKey>(30);
 
   const active = projects.filter(p => p.isActive);
-  const activeTabMeta = TAB_LABELS.find(tab => tab.key === activeTab) ?? TAB_LABELS[0];
 
   const allInactive = projects
     .filter(p => !p.isActive)
@@ -113,15 +113,13 @@ export default function Dashboard({
   const hasData = projects.length > 0 || (stats?.totalProjects ?? 0) > 0;
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold">Claude Code Dashboard</h1>
-            <p className="text-sm opacity-60 mt-1">{stats?.totalProjects ?? 0} projects · {stats?.activeSessionCount ?? 0} active sessions</p>
-          </div>
-          <div className="ml-auto flex flex-wrap gap-2 items-center">
+    <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-5 max-w-5xl mx-auto">
+      {/* Header + tabs: same sticky bar as ProjectDetail */}
+      <header className="sticky top-0 z-20 pt-5 sm:pt-6 bg-[var(--vscode-editor-background)] border-b border-[var(--vscode-panel-border)]">
+        <div className="flex items-center gap-2 min-w-0">
+          <h1 className="text-2xl font-bold truncate min-w-0">Claude Code Dashboard</h1>
+          <div className="flex-1" />
+          <div className="flex flex-wrap justify-end gap-2 items-center shrink-0">
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)]">
               {formatTokens(stats?.tokensTodayTotal ?? 0)} today
             </span>
@@ -131,24 +129,22 @@ export default function Dashboard({
             </span>
           </div>
         </div>
-      </div>
-
-      {/* Tab navigation */}
-      <nav className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
-        <div className="px-4 py-4 border-b border-[var(--vscode-panel-border)]">
-          <div className="flex gap-1 overflow-x-auto pb-1">
-            {TAB_LABELS.map(({ key, label }) => (
-              <DashboardTabButton
-                key={key}
-                label={label}
-                active={activeTab === key}
-                onClick={() => setActiveTab(key)}
-              />
-            ))}
-          </div>
-          <p className="text-sm opacity-60 mt-3 max-w-2xl">{activeTabMeta.description}</p>
+        <div className="flex items-center gap-2 mt-1.5 text-xs opacity-60">
+          {(stats?.activeSessionCount ?? 0) > 0 && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />}
+          <span>{stats?.totalProjects ?? 0} projects · {stats?.activeSessionCount ?? 0} active sessions</span>
         </div>
-      </nav>
+        <nav className="flex gap-1 overflow-x-auto mt-4" aria-label="Dashboard sections">
+          {TAB_LABELS.map(({ key, label, description }) => (
+            <TabButton
+              key={key}
+              label={label}
+              description={description}
+              active={activeTab === key}
+              onClick={() => setActiveTab(key)}
+            />
+          ))}
+        </nav>
+      </header>
 
       {/* ── Home tab ── */}
       {activeTab === 'home' && (
@@ -530,21 +526,6 @@ function ProjectRow({ project }: { project: Project }) {
       <span className="text-xs opacity-50 shrink-0">{timeAgo(project.lastActive)}</span>
       <span className="text-xs opacity-50 shrink-0">{formatTokens(project.totalTokens)}</span>
       <span className="text-xs opacity-50 shrink-0">{formatCost(project.totalCostUsd)}</span>
-    </button>
-  );
-}
-
-function DashboardTabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-t-lg rounded-b-md px-3.5 py-2 text-sm border transition-colors whitespace-nowrap ${
-        active
-          ? 'border-[var(--vscode-panel-border)] border-b-transparent bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] shadow-[inset_0_-2px_0_0_var(--vscode-button-background)]'
-          : 'border-transparent bg-transparent text-[var(--vscode-editor-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)]'
-      }`}
-    >
-      <span>{label}</span>
     </button>
   );
 }
