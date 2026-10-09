@@ -176,6 +176,38 @@ describe('ProjectPanel', () => {
     expect(reveal).toHaveBeenCalledWith(vscode.ViewColumn.One);
   });
 
+  it('sends sessions to the webview without turns, digest or source file', () => {
+    let updatedHandler: () => void = () => {};
+    const session = { id: 's1', startTime: 1, turns: [{ id: 't1' }], digest: { userTurns: [] }, sourceFile: '/x/s1.jsonl' };
+    const store = {
+      on: vi.fn((evt, cb) => { if (evt === 'updated') updatedHandler = cb; }),
+      off: vi.fn(),
+      getProject: vi.fn(() => undefined),
+      getSessions: vi.fn(() => [session]),
+      getSubagentSessions: vi.fn(() => [session]),
+      getProjectConfig: vi.fn(() => ({})),
+      getProjectStats: vi.fn(() => ({})),
+      getProjectFiles: vi.fn(() => []),
+      getProjectTodos: vi.fn(() => []),
+      getClaudeCommits: vi.fn(() => []),
+    };
+    const panel = {
+      webview: { html: '', postMessage: vi.fn(), onDidReceiveMessage: vi.fn(), asWebviewUri: vi.fn((u) => u), cspSource: 'test' },
+      reveal: vi.fn(),
+      onDidDispose: vi.fn(),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as unknown as vscode.WebviewPanel);
+    const context = { extensionUri: vscode.Uri.file('/ext') } as Pick<vscode.ExtensionContext, 'extensionUri'> as vscode.ExtensionContext;
+
+    ProjectPanel.createOrShow(context, store as unknown as DashboardStore, 'p1');
+    updatedHandler();
+
+    const { payload } = panel.webview.postMessage.mock.calls[0][0];
+    for (const sent of [...payload.sessions, ...payload.subagentSessions]) {
+      expect(sent).toEqual({ id: 's1', startTime: 1, turns: [] });
+    }
+  });
+
   it('serves turns for subagent sessions as well as main ones', async () => {
     let messageHandler: (msg: ProjectMessage) => Promise<void> | void = () => {};
     const subagent = { id: 'sub1', turns: [{ id: 't9' }], startTime: 1 };

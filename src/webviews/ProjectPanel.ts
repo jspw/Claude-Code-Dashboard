@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
-import { DashboardStore } from '../store/DashboardStore';
+import { DashboardStore, Session } from '../store/DashboardStore';
 import { getWebviewContent } from './getWebviewContent';
+
+// Turns load on demand, and the digest and source path are backend-only.
+function toWireSession({ digest: _digest, sourceFile: _sourceFile, ...session }: Session) {
+  return { ...session, turns: [] };
+}
 
 export class ProjectPanel {
   private static panels: Map<string, ProjectPanel> = new Map();
@@ -98,8 +103,8 @@ export class ProjectPanel {
 
   private buildState(store: DashboardStore, projectId: string) {
     // Strip turns from sessions — loaded on demand when user selects a session
-    const sessions = store.getSessions(projectId).map(s => ({ ...s, turns: [] }));
-    const subagentSessions = store.getSubagentSessions(projectId).map(s => ({ ...s, turns: [] }));
+    const sessions = store.getSessions(projectId).map(toWireSession);
+    const subagentSessions = store.getSubagentSessions(projectId).map(toWireSession);
     return {
       project: store.getProject(projectId),
       sessions,

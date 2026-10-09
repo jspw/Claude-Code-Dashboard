@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import { EventEmitter } from 'events';
 import { SessionParser } from '../parsers/SessionParser';
 import { SettingsParser } from '../parsers/SettingsParser';
+import type { SessionDigest } from '../parsers/sessionDigest';
 
 export interface ToolUsageStat {
   tool: string;
@@ -111,6 +112,8 @@ export interface Session {
   activityRatio: number | null;   // activeTimeMs / durationMs * 100
   model: string | null;           // raw detected model ID (e.g. 'claude-opus-4-8')
   pricingConfidence?: 'exact' | 'fallback'; // 'fallback' = unknown model, priced at Sonnet rates
+  digest: SessionDigest;          // what analytics read from turns, so turns can stay on disk
+  sourceFile: string | null;      // JSONL this session was parsed from; turns are re-read from it
 }
 
 export interface Turn {

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
 import { promptText } from './promptText';
+import { digestTurns } from './sessionDigest';
 
 /** Date the pricing table below was last synced against published Anthropic pricing. */
 export const PRICING_TABLE_DATE = '2026-06';
@@ -312,6 +313,8 @@ export class SessionParser {
         activityRatio,
         model: detectedModel !== 'default' ? detectedModel : null,
         pricingConfidence,
+        digest: digestTurns(turns),
+        sourceFile: filePath,
       };
     } catch (e) {
       console.error('Failed to parse session file:', filePath, e);

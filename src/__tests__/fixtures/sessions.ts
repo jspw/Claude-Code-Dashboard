@@ -1,4 +1,5 @@
 import { Project, Session, Turn, ToolCall, LiveEvent, ProjectConfig, MemoryFile } from '../../store/DashboardStore';
+import { digestTurns } from '../../parsers/sessionDigest';
 
 let _id = 0;
 const uid = () => `test-${++_id}`;
@@ -27,7 +28,7 @@ export function makeTurn(overrides: Partial<Turn> = {}): Turn {
 
 export function makeSession(overrides: Partial<Session> = {}): Session {
   const now = Date.now();
-  return {
+  const session: Session = {
     id: uid(),
     projectId: 'test-project',
     parentSessionId: null,
@@ -59,8 +60,12 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     activeTimeMs: null,
     activityRatio: null,
     model: null,
+    digest: digestTurns([]),
+    sourceFile: null,
     ...overrides,
   };
+  // Analytics read the digest, so keep it in step with the turns a test supplies.
+  return overrides.digest ? session : { ...session, digest: digestTurns(session.turns) };
 }
 
 export function makeProject(overrides: Partial<Project> = {}): Project {

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionParser } from '../SessionParser';
+import { digestTurns } from '../sessionDigest';
 import {
   EMPTY_CONTENT,
   MALFORMED_LINES,
@@ -88,6 +89,15 @@ describe('SessionParser', () => {
 
     expect(result?.turns[0].content).toBe('Fix the build script');
     expect(result?.sessionSummary).toBe('Fix the build script');
+  });
+
+  it('attaches a digest and the source file to each parsed session', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_TOOLS));
+    const result = parser.parseFile('/sessions/tools.jsonl', 'proj-1');
+
+    expect(result?.sourceFile).toBe('/sessions/tools.jsonl');
+    expect(result?.digest).toEqual(digestTurns(result!.turns));
+    expect(Object.keys(result!.digest.toolCounts).length).toBeGreaterThan(0);
   });
 
   describe('injected user messages', () => {
