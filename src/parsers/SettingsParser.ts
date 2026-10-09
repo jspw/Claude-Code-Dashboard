@@ -13,6 +13,13 @@ type ParsedMarkdownFile = {
   content: string;
 };
 
+// YAML quotes a scalar whenever it contains `:` or `#`; the quotes are syntax,
+// not part of the description.
+function unquote(value: string): string {
+  const quoted = value.match(/^"([\s\S]*)"$/) ?? value.match(/^'([\s\S]*)'$/);
+  return quoted ? quoted[1] : value;
+}
+
 export class SettingsParser {
   private readJson(filePath: string): Record<string, unknown> {
     if (!fs.existsSync(filePath)) { return {}; }
@@ -31,7 +38,7 @@ export class SettingsParser {
       const nameMatch = fm.match(/^name:\s*(.+)$/m);
       const descMatch = fm.match(/^description:\s*(.+)$/m);
       if (nameMatch) { name = nameMatch[1].trim(); }
-      if (descMatch) { description = descMatch[1].trim(); }
+      if (descMatch) { description = unquote(descMatch[1].trim()); }
     }
 
     return { name, description, content };
@@ -82,7 +89,10 @@ export class SettingsParser {
           const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
           if (fmMatch) {
             const fm = fmMatch[1];
-            const typeMatch = fm.match(/^type:\s*(.+)$/m);
+            // `type` is normally nested under `metadata:`, so allow indentation.
+            // `[ \t]*` (not `\s*`) keeps the match on one line and stops
+            // `node_type:` from being read as `type:`.
+            const typeMatch = fm.match(/^[ \t]*type:\s*(.+)$/m);
             if (typeMatch) { type = typeMatch[1].trim(); }
           }
 
