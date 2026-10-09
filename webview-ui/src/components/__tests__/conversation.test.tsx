@@ -7,6 +7,7 @@ import { SystemEventRow } from '../conversation/SystemEventRow';
 import { AgentCallBlock } from '../conversation/AgentCallBlock';
 import { ResponseGroup } from '../conversation/ResponseGroup';
 import { ToolCallRow, relativizeHint, toolDisplayName, toolHint } from '../conversation/ToolCallRow';
+import { QuestionsBlock, resolveAnswer } from '../conversation/QuestionsBlock';
 
 describe('conversation components', () => {
   it('renders nothing for empty turns and caveat-only user turns', () => {
@@ -139,5 +140,77 @@ describe('ResponseGroup — replies only', () => {
 
     expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: /tool calls/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('QuestionsBlock', () => {
+  const input = {
+    questions: [
+      {
+        question: 'What should the badge say?',
+        header: 'Badge',
+        multiSelect: false,
+        options: [
+          { label: 'Open to contract work', description: 'Fits the Services page' },
+          { label: 'Keep shipping', description: 'Leave it as it is' },
+        ],
+      },
+      {
+        question: 'Which extras?',
+        header: 'Extras',
+        multiSelect: true,
+        options: [{ label: 'Maps, live' }, { label: 'Ticker' }, { label: 'Signboards' }],
+      },
+    ],
+  };
+
+  it('marks the picked options and shows typed text as Other', () => {
+    render(<QuestionsBlock tc={makeToolCall({
+      name: 'AskUserQuestion',
+      input,
+      output: 'Your questions have been answered: ...',
+      answers: {
+        'What should the badge say?': { answer: 'Open for collaboration, not job hunting', notes: 'Keep it subtle' },
+        'Which extras?': { answer: 'Maps, live, Signboards' },
+      },
+    })} />);
+
+    expect(screen.getByText('Answered · 2 questions')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Other Open for collaboration/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Keep shipping/ })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText('Keep it subtle')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Maps, live' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: 'Signboards' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: 'Ticker' })).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: /Questions/ }));
+    expect(screen.queryByText('What should the badge say?')).not.toBeInTheDocument();
+  });
+
+  it('shows a dismissed question set without answers', () => {
+    render(<QuestionsBlock tc={makeToolCall({
+      name: 'AskUserQuestion',
+      input,
+      output: "The user doesn't want to proceed with this tool use.",
+    })} />);
+
+    expect(screen.getByText('Dismissed · 2 questions')).toBeInTheDocument();
+    expect(screen.getAllByText('No answer')).toHaveLength(2);
+  });
+
+  it('resolves multi-select answers whose labels contain commas', () => {
+    const q = input.questions[1];
+    const { picked, other } = resolveAnswer(q, 'Maps, live, Ticker, my own idea');
+    expect([...picked]).toEqual(['Maps, live', 'Ticker']);
+    expect(other).toBe('my own idea');
+  });
+
+  it('renders inside the response timeline instead of a plain tool row', () => {
+    render(<ResponseGroup turns={[
+      makeTurn({ role: 'assistant', content: '', toolCalls: [makeToolCall({ name: 'AskUserQuestion', input })] }),
+    ]} />);
+
+    expect(screen.getByText('Waiting for answer · 2 questions')).toBeInTheDocument();
+    expect(screen.queryByText('Ask User Question')).not.toBeInTheDocument();
   });
 });

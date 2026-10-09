@@ -65,6 +65,13 @@ export interface ToolCall {
   input: Record<string, unknown>;
   output?: string;
   mcpServer?: string;   // set if tool name matches mcp__<server>__<tool>
+  answers?: Record<string, QuestionAnswer>;   // AskUserQuestion: question text → the user's answer
+}
+
+export interface QuestionAnswer {
+  answer: string;       // chosen label(s), comma-joined for multi-select, or the user's own text
+  notes?: string;
+  preview?: string;     // preview of the chosen option, when the question had previews
 }
 
 export interface DashboardStats {

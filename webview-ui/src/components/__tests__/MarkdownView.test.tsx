@@ -24,6 +24,28 @@ describe('MarkdownView', () => {
     expect(screen.getByText('const x = 1;')).toBeInTheDocument();
   });
 
+  it('renders GFM tables with alignment, inline markdown, and escaped pipes', () => {
+    render(<MarkdownView content={'Two processes:\n| PID | What | CPU |\n|---|:---:|--:|\n| 67489 | `vitest 1` worker | 98% |\n| 64903 | a \\| b |\n\nAfter.'} />);
+
+    const table = screen.getByRole('table');
+    expect(table.querySelectorAll('th')).toHaveLength(3);
+    expect(screen.getByRole('columnheader', { name: 'What' })).toHaveClass('text-center');
+    expect(screen.getByRole('cell', { name: '98%' })).toHaveClass('text-right');
+    expect(screen.getByText('vitest 1').tagName).toBe('CODE');
+    expect(screen.getByRole('cell', { name: 'a | b' })).toBeInTheDocument();
+    // A short row still gets a cell per column
+    expect(table.querySelectorAll('tbody tr')[1].querySelectorAll('td')).toHaveLength(3);
+    expect(screen.getByText('Two processes:')).toBeInTheDocument();
+    expect(screen.getByText('After.')).toBeInTheDocument();
+  });
+
+  it('keeps a pipe line over a --- rule as a paragraph and a rule', () => {
+    const { container } = render(<MarkdownView content={'a | b\n---\nnext'} />);
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(container.querySelector('hr')).toBeInTheDocument();
+  });
+
   it('toggles command content', () => {
     render(<CommandBlock command={{ name: 'deploy', content: 'Deploy **now**' }} />);
     fireEvent.click(screen.getByRole('button'));

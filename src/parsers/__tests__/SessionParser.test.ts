@@ -255,6 +255,26 @@ describe('SessionParser', () => {
     expect(thinkingResult?.model).toBe('claude-opus-4');
   });
 
+  it('keeps AskUserQuestion answers, notes, and previews from the structured tool result', () => {
+    const question = 'Which layout?';
+    vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+      JSON.stringify({ type: 'user', uuid: 'u1', timestamp: '2025-01-15T10:00:00Z', cwd: '/p', message: { content: 'Help me pick' } }),
+      JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2025-01-15T10:00:10Z', message: {
+        model: 'claude-sonnet-4',
+        content: [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [{ question, multiSelect: false, options: [{ label: 'Grid' }] }] } }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      } }),
+      JSON.stringify({ type: 'user', uuid: 'r1', timestamp: '2025-01-15T10:00:20Z',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'q1', content: `Your questions have been answered: "${question}"="Grid".` }] },
+        toolUseResult: { questions: [], answers: { [question]: 'Grid', ignored: 42 }, annotations: { [question]: { preview: '[ ][ ]', notes: '  wide screens  ' } } },
+      }),
+    ].join('\n')));
+
+    const call = parser.parseFile('/sessions/q.jsonl', 'proj-1')!.turns[1].toolCalls[0];
+    expect(call.answers).toEqual({ [question]: { answer: 'Grid', preview: '[ ][ ]', notes: 'wide screens' } });
+    expect(call.output).toContain('Your questions have been answered');
+  });
+
   it('attaches tool outputs, captures thinking text, and skips tool-result turns', () => {
     vi.mocked(fs.readFileSync).mockReturnValue(asReadResult(SESSION_WITH_TOOL_RESULTS));
     const result = parser.parseFile('/sessions/results.jsonl', 'proj-1');

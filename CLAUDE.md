@@ -114,7 +114,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 | Component | Used in |
 |---|---|
 | `SessionDetail.tsx` (+ `modelLabel`, `modelBadgeColor`) | ProjectDetail → Sessions tab; session meta header + copy-resume-command button; renders turns via `conversation/` |
-| `conversation/` (`ConversationTurn`, `ResponseGroup`, `UserMessageCard`, `ThinkingRow`, `ToolCallRow`, `AgentCallBlock`, `SkillContextRow`, `SystemEventRow`, `shared.tsx`, `systemEvents.ts`) | Claude-Code-extension-style conversation timeline: user prompt cards ("You" header + accent border), tool-colored dots joined by connector lines (everything between two user prompts merges into one `ResponseGroup`), tool "OUT" output boxes, project-relative file hints, show-less-by-default messages |
+| `conversation/` (`ConversationTurn`, `ResponseGroup`, `UserMessageCard`, `ThinkingRow`, `ToolCallRow`, `AgentCallBlock`, `QuestionsBlock`, `SkillContextRow`, `SystemEventRow`, `shared.tsx`, `systemEvents.ts`) | Claude-Code-extension-style conversation timeline: user prompt cards ("You" header + accent border), tool-colored dots joined by connector lines (everything between two user prompts merges into one `ResponseGroup`), tool "OUT" output boxes, AskUserQuestion cards (options with the picked ones marked, typed "Other" text, notes), project-relative file hints, show-less-by-default messages |
 | `SessionsBrowser.tsx` | Dashboard → Sessions tab (cross-project rows + backend-served prompt search) |
 | `WeeklyStatsTab.tsx` | ProjectDetail → Activity (usage trend) |
 | `MarkdownView.tsx` (+ `CommandBlock`) | ProjectDetail → Setup (CLAUDE.md, memory, commands) |
