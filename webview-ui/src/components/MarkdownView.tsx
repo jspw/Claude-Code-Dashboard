@@ -150,8 +150,12 @@ export function MarkdownView({
     // Empty line
     if (!line.trim()) { i++; continue; }
 
-    // Paragraph — collect contiguous non-special lines
-    const paraLines: string[] = [];
+    // Paragraph. Every block start was ruled out above, so this line always
+    // opens one — taking it unconditionally guarantees the loop advances. (A
+    // line like `#3 …` is no heading, yet the join test below rejects any `#`
+    // line; collecting nothing once left `i` stuck and froze the webview.)
+    const paraLines: string[] = [line];
+    i++;
     while (
       i < lines.length &&
       lines[i].trim() &&
@@ -161,9 +165,7 @@ export function MarkdownView({
       !lines[i].match(/^\d+\. /) &&
       !lines[i].match(/^---+$/)
     ) { paraLines.push(lines[i]); i++; }
-    if (paraLines.length) {
-      elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '), onLinkClick, highlightMentions)}</p>);
-    }
+    elements.push(<p key={key++} className="text-sm leading-relaxed my-1.5 opacity-90">{renderInline(paraLines.join(' '), onLinkClick, highlightMentions)}</p>);
   }
 
   return <div className={compact ? '' : 'p-4 max-h-[70vh] overflow-y-auto'}>{elements}</div>;

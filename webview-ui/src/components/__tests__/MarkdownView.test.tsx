@@ -4,6 +4,14 @@ import { fireEvent, render, screen } from '../../__tests__/helpers/render-helper
 import { CommandBlock, MarkdownView, MentionText } from '../MarkdownView';
 
 describe('MarkdownView', () => {
+  it('renders a line starting with # that is not a heading, instead of looping forever', () => {
+    render(<MarkdownView content={'#3 was the leftover from my review.\n#### Not a heading level we render\n\nNext paragraph.'} />);
+
+    expect(screen.getByText(/#3 was the leftover/)).toBeInTheDocument();
+    expect(screen.getByText(/#### Not a heading/)).toBeInTheDocument();
+    expect(screen.getByText('Next paragraph.')).toBeInTheDocument();
+  });
+
   it('renders headings, emphasis, code blocks, and lists', () => {
     render(<MarkdownView content={'# Title\n\nParagraph with `code` and **bold** and *italic*\n\n- one\n- two\n\n1. first\n2. second\n\n```ts\nconst x = 1;\n```'} />);
 
