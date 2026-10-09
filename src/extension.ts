@@ -10,6 +10,8 @@ import { StatusBarProvider } from './providers/StatusBarProvider';
 import { DashboardPanel } from './webviews/DashboardPanel';
 import { ProjectPanel } from './webviews/ProjectPanel';
 import { AlertManager } from './alerts/AlertManager';
+import { shareContext } from './share/shareContext';
+import type { ShareScope } from './share/types';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -55,6 +57,9 @@ export async function activate(context: vscode.ExtensionContext) {
       await context.globalState.update('hooksConsent', 'declined');
       vscode.window.showInformationMessage('Live tracking disabled. Dashboard hooks were removed from ~/.claude/settings.json.');
     }),
+    vscode.commands.registerCommand('claudeDashboard.shareContext', async (projectId: string, scope: ShareScope, sessionId?: string) => {
+      await shareContext(store, projectId, scope, sessionId);
+    }),
     vscode.commands.registerCommand('claudeDashboard.exportSessions', async (projectId: string, format: 'json' | 'csv') => {
       const project = store.getProject(projectId);
       if (!project) { return; }
@@ -76,7 +81,12 @@ export async function activate(context: vscode.ExtensionContext) {
         );
         content = header + rows.join('\n');
       } else {
-        content = JSON.stringify(sessions, null, 2);
+        // Exports carry full turns, read from disk; the digest and source path are internal.
+        const full = sessions.map(({ digest: _digest, sourceFile: _sourceFile, ...s }) => ({
+          ...s,
+          turns: store.getSessionTurns(projectId, s.id),
+        }));
+        content = JSON.stringify(full, null, 2);
       }
 
       const encoder = new TextEncoder();

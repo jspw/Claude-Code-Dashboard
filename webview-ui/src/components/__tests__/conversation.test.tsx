@@ -87,3 +87,57 @@ describe('conversation components', () => {
     expect(screen.queryByTitle('Show full output')).not.toBeInTheDocument();
   });
 });
+
+describe('ResponseGroup — replies only', () => {
+  const turns = () => [
+    makeTurn({ id: 'a1', role: 'assistant', content: 'Looking into it.', thinking: 'hmm', timestamp: 1, toolCalls: [
+      makeToolCall({ id: 'tc1', name: 'WebFetch', input: { url: 'https://example.com' } }),
+      makeToolCall({ id: 'tc2', name: 'WebFetch', input: { url: 'https://example.org' } }),
+    ] }),
+    makeTurn({ id: 'a2', role: 'assistant', content: 'Here is the answer.', timestamp: 2 }),
+  ];
+
+  it('shows only the final reply and folds everything before it into one row', () => {
+    render(<ResponseGroup turns={turns()} repliesOnly />);
+
+    expect(screen.getByText('Here is the answer.')).toBeInTheDocument();
+    expect(screen.queryByText('Looking into it.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Web Fetch')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 tool calls · 1 message · 1 thought/ })).toBeInTheDocument();
+  });
+
+  it("expands one response's hidden steps on click", () => {
+    render(<ResponseGroup turns={turns()} repliesOnly />);
+
+    fireEvent.click(screen.getByRole('button', { name: /2 tool calls/ }));
+    expect(screen.getByText('Looking into it.')).toBeInTheDocument();
+    expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
+  });
+
+  it('shows replies in full rather than as a preview', () => {
+    const long = `${'word '.repeat(150)}THE END`;
+    const group = (repliesOnly: boolean) =>
+      <ResponseGroup repliesOnly={repliesOnly} turns={[makeTurn({ id: 'r1', role: 'assistant', content: long })]} />;
+    const { rerender } = render(group(false));
+    expect(screen.getByRole('button', { name: /Show more/ })).toBeInTheDocument();
+
+    rerender(group(true));
+    expect(screen.getByText(/THE END/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+  });
+
+  it('still marks a response that had no reply text', () => {
+    render(<ResponseGroup repliesOnly turns={[
+      makeTurn({ role: 'assistant', content: '', toolCalls: [makeToolCall({ name: 'WebFetch', input: { url: 'https://x.dev' } })] }),
+    ]} />);
+
+    expect(screen.getByRole('button', { name: /1 tool call$/ })).toBeInTheDocument();
+  });
+
+  it('shows the full timeline by default', () => {
+    render(<ResponseGroup turns={turns()} />);
+
+    expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /tool calls/ })).not.toBeInTheDocument();
+  });
+});

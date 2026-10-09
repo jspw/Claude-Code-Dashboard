@@ -10,22 +10,43 @@ import { ThinkingRow } from './ThinkingRow';
 import { ToolCallRow } from './ToolCallRow';
 import { AgentCallBlock } from './AgentCallBlock';
 
-function AssistantMessageBody({ content }: { content: string }) {
+function AssistantMessageBody({ content, expanded }: { content: string; expanded: boolean }) {
   return (
     <div className="group relative pr-6 text-sm">
       <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <CopyButton text={content} />
       </div>
-      <ExpandableMarkdown content={content} />
+      <ExpandableMarkdown content={content} defaultExpanded={expanded} />
     </div>
   );
 }
 
+type RowKind = 'reply' | 'tool' | 'thought' | 'event';
+
+const STEP_WORDS: [RowKind, string][] = [['tool', 'tool call'], ['reply', 'message'], ['thought', 'thought'], ['event', 'event']];
+
+// "2 tool calls · 3 messages · 1 thought" — everything a folded response did
+// before its final reply.
+function stepsLabel(kinds: RowKind[]): string {
+  return STEP_WORDS
+    .map(([kind, word]) => [kinds.filter(k => k === kind).length, word] as const)
+    .filter(([count]) => count > 0)
+    .map(([count, word]) => `${count} ${word}${count === 1 ? '' : 's'}`)
+    .join(' · ');
+}
+
 // Everything between two user prompts rendered as one continuous timeline —
 // thought, text, tool, and system-event rows all joined by a single connector
-// line, with one aggregate token footer at the end.
-export function ResponseGroup({ turns, projectRoot }: { turns: Turn[]; projectRoot?: string | null }) {
-  const rows: { key: string; color?: string; node: React.ReactNode }[] = [];
+// line, with one aggregate token footer at the end. With `repliesOnly`, only
+// Claude's final reply stays — the narration, tools and thinking that led up
+// to it fold into one row that expands this response.
+export function ResponseGroup({ turns, projectRoot, repliesOnly = false }: {
+  turns: Turn[];
+  projectRoot?: string | null;
+  repliesOnly?: boolean;
+}) {
+  const [showSteps, setShowSteps] = React.useState(false);
+  const rows: { key: string; kind: RowKind; color?: string; node: React.ReactNode }[] = [];
   let totalIn = 0;
   let totalOut = 0;
 
@@ -39,6 +60,7 @@ export function ResponseGroup({ turns, projectRoot }: { turns: Turn[]; projectRo
       if (!sys || sys === 'skip') { continue; }
       rows.push({
         key: turn.id,
+        kind: 'event',
         node: sys.kind === 'skill' ? <SkillContextRow event={sys} /> : <SystemEventRow event={sys} />,
       });
       continue;
@@ -47,14 +69,16 @@ export function ResponseGroup({ turns, projectRoot }: { turns: Turn[]; projectRo
     totalIn += turn.inputTokens;
     totalOut += turn.outputTokens;
     if (turn.thinking) {
-      rows.push({ key: `${turn.id}-thinking`, node: <ThinkingRow thinking={turn.thinking} /> });
+      rows.push({ key: `${turn.id}-thinking`, kind: 'thought', node: <ThinkingRow thinking={turn.thinking} /> });
     }
     if (content) {
-      rows.push({ key: `${turn.id}-text`, node: <AssistantMessageBody content={content} /> });
+      // Replies only is for reading what Claude said, so show it in full.
+      rows.push({ key: `${turn.id}-text`, kind: 'reply', node: <AssistantMessageBody content={content} expanded={repliesOnly} /> });
     }
     for (const tc of turn.toolCalls) {
       rows.push({
         key: tc.id,
+        kind: 'tool',
         color: toolColor(tc.name),
         node: tc.name === 'Agent'
           ? <AgentCallBlock tc={tc} />
@@ -65,10 +89,30 @@ export function ResponseGroup({ turns, projectRoot }: { turns: Turn[]; projectRo
 
   if (rows.length === 0) { return null; }
 
+  const finalReply = [...rows].reverse().find(row => row.kind === 'reply');
+  const steps = rows.filter(row => row !== finalReply);
+  const folding = repliesOnly && steps.length > 0;
+  const shown = folding && !showSteps ? (finalReply ? [finalReply] : []) : rows;
+  if (folding) {
+    shown.unshift({
+      key: 'steps-toggle',
+      kind: 'event',
+      node: (
+        <button
+          onClick={() => setShowSteps(open => !open)}
+          aria-expanded={showSteps}
+          className="text-xs opacity-50 hover:opacity-100 transition-opacity"
+        >
+          {showSteps ? '▼' : '▶'} {stepsLabel(steps.map(row => row.kind))}
+        </button>
+      ),
+    });
+  }
+
   return (
     <div>
-      {rows.map((row, i) => (
-        <TimelineRow key={row.key} dotColor={row.color} last={i === rows.length - 1}>
+      {shown.map((row, i) => (
+        <TimelineRow key={row.key} dotColor={row.color} last={i === shown.length - 1}>
           {row.node}
         </TimelineRow>
       ))}

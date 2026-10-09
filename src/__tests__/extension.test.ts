@@ -21,8 +21,9 @@ const mockStore = {
   initialize: vi.fn().mockResolvedValue(undefined),
   refresh: vi.fn(),
   getProjects: vi.fn(() => [{ id: 'p1', name: 'Alpha' }]),
-  getProject: vi.fn(() => ({ id: 'p1', name: 'Alpha' })),
+  getProject: vi.fn<() => { id: string; name: string; path?: string } | undefined>(() => ({ id: 'p1', name: 'Alpha' })),
   getSessions: vi.fn<() => ExportSession[]>(() => []),
+  getSessionTurns: vi.fn(() => [{ id: 't1' }]),
   on: vi.fn(),
 };
 
@@ -72,7 +73,7 @@ describe('extension activate', () => {
     expect(DashboardStore).toHaveBeenCalledOnce();
     expect(HookManager).toHaveBeenCalledOnce();
     expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith('claudeDashboard.sidebar', expect.anything(), expect.anything());
-    expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(6);
+    expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(7);
     expect(mockFileWatcher.start).toHaveBeenCalledWith(context);
     expect(mockEventWatcher.start).toHaveBeenCalledWith(context);
     expect(mockStore.initialize).toHaveBeenCalledOnce();
@@ -135,7 +136,28 @@ describe('extension activate', () => {
 
     expect(mockStore.refresh).toHaveBeenCalledOnce();
     expect(vscode.workspace.fs.writeFile).toHaveBeenCalledTimes(2);
+    const jsonBytes = vi.mocked(vscode.workspace.fs.writeFile).mock.calls[0][1] as Uint8Array;
+    expect(new TextDecoder().decode(jsonBytes)).toContain('"t1"');
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Sessions exported to /tmp/sessions.json');
+  });
+
+  it('registers shareContext and forwards scope and session id to the store', async () => {
+    const context = createMockExtensionContext();
+    context.globalState.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'hooksConfigured') return true;
+      return defaultValue;
+    });
+    mockStore.getProject.mockReturnValue({ id: 'p1', name: 'Alpha', path: '/repos/alpha' });
+    mockStore.getSessions.mockReturnValue([]);
+
+    await activate(context as unknown as vscode.ExtensionContext);
+
+    const shareHandler = getRegisteredCommand('claudeDashboard.shareContext');
+    await shareHandler('p1', 'session', 's9');
+
+    expect(mockStore.getProject).toHaveBeenCalledWith('p1');
+    // No matching session, so the command warns rather than writing a bundle.
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('That session is no longer available.');
   });
 
   it('covers openDashboard, skipped exports, and hook reinjection', async () => {

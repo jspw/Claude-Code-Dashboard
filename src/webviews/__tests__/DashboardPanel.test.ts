@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { EventEmitter } from 'events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPanel } from '../DashboardPanel';
 import { DashboardStore, LiveEvent, ProjectedCost, StreakData, EfficiencyStats, WeeklyRecap } from '../../store/DashboardStore';
@@ -12,6 +13,7 @@ type DashboardMessage =
   | { type: 'refresh' };
 type DashboardStoreMock = {
   on: ReturnType<typeof vi.fn>;
+  off: ReturnType<typeof vi.fn>;
   getProjects: ReturnType<typeof vi.fn>;
   getStats: ReturnType<typeof vi.fn>;
   getUsageOverTime: ReturnType<typeof vi.fn>;
@@ -45,6 +47,7 @@ type WebviewPanelLike = {
 function createStore(overrides: Partial<DashboardStoreMock> = {}): DashboardStoreMock {
   return {
     on: vi.fn(),
+    off: vi.fn(),
     getProjects: vi.fn(() => []),
     getStats: vi.fn(() => ({ totalProjects: 0, activeSessionCount: 0, tokensTodayTotal: 0, costTodayUsd: 0, tokensWeekTotal: 0, costWeekUsd: 0 })),
     getUsageOverTime: vi.fn(() => []),
@@ -228,5 +231,31 @@ describe('DashboardPanel', () => {
     expect(inputOptions.validateInput?.('0')).toBeNull();
     expect(config.update).not.toHaveBeenCalled();
     expect(store.getMonthlyUsage).not.toHaveBeenCalled();
+  });
+
+  it('stops listening to the store once the panel is closed', () => {
+    const emitter = new EventEmitter();
+    let disposeHandler: () => void = () => {};
+    const store = Object.assign(createStore(), { on: emitter.on.bind(emitter), off: emitter.off.bind(emitter) });
+    const panel = {
+      webview: { html: '', postMessage: vi.fn(), onDidReceiveMessage: vi.fn(), asWebviewUri: vi.fn((u) => u), cspSource: 'test' },
+      reveal: vi.fn(),
+      onDidDispose: vi.fn((cb) => { disposeHandler = cb; }),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as unknown as vscode.WebviewPanel);
+    const context = {
+      extensionUri: vscode.Uri.file('/ext'),
+      globalState: { get: vi.fn(() => true), update: vi.fn() },
+    } as unknown as vscode.ExtensionContext;
+
+    DashboardPanel.createOrShow(context, store as unknown as DashboardStore);
+    disposeHandler();
+    // VS Code throws on any access to a closed panel's webview; a listener left
+    // behind would abort the emit for every listener registered after it.
+    Object.defineProperty(panel, 'webview', { get: () => { throw new Error('Webview is disposed'); } });
+
+    expect(() => emitter.emit('updated')).not.toThrow();
+    expect(() => emitter.emit('liveEvent', { type: 'tool_use', timestamp: 0 })).not.toThrow();
+    expect(emitter.listenerCount('updated') + emitter.listenerCount('liveEvent')).toBe(0);
   });
 });

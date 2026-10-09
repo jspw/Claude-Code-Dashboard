@@ -59,8 +59,15 @@ export function TimelineRow({ dotColor, last = false, children }: {
   );
 }
 
-export function ExpandableMarkdown({ content, highlightMentions = false }: { content: string; highlightMentions?: boolean }) {
-  const [showFull, setShowFull] = React.useState(false);
+export function ExpandableMarkdown({ content, highlightMentions = false, defaultExpanded = false }: {
+  content: string;
+  highlightMentions?: boolean;
+  defaultExpanded?: boolean;
+}) {
+  const [showFull, setShowFull] = React.useState(defaultExpanded);
+  // Follow the default when it changes (e.g. switching to "Replies only"),
+  // not just on first render.
+  React.useEffect(() => { setShowFull(defaultExpanded); }, [defaultExpanded]);
   const isLong = content.length > CONTENT_LONG_THRESHOLD;
   const shown = !isLong
     ? content

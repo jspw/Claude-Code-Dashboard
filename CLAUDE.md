@@ -151,7 +151,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 
 No Redux/Context. App-level `useState<unknown>` holds server state, merged on each `stateUpdate` message. Views manage local UI state (selected tab, sort order, selected session) via component-local `useState`.
 
-Session turns are **lazy-loaded**: initial state ships sessions with `turns: []`. When a user selects a session, webview sends `getSessionTurns` and the backend responds with the full turn array.
+Session turns are **lazy-loaded from disk**: the store keeps each session's `digest` (user prompts, tool and MCP counts, last todos, recent tool calls) and `turns: []`. `DashboardStore.getSessionTurns()` re-reads a session's JSONL when it is opened, exported or shared, keeping the 3 most recent in memory; a file change drops that file's entry. Initial state ships sessions with `turns: []`; when a user selects a session, the webview sends `getSessionTurns` and the backend responds with the full turn array.
 
 ### Key Data Types (in `webview-ui/src/types.ts`)
 

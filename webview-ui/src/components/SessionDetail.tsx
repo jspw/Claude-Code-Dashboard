@@ -4,6 +4,9 @@ import { formatTokens, formatCost, formatDuration } from '../utils/format';
 import { isPromptTurn } from './conversation/ConversationTurn';
 import { UserMessageCard } from './conversation/UserMessageCard';
 import { ResponseGroup } from './conversation/ResponseGroup';
+import ShareContextButton from './ShareContextButton';
+import { vscode } from '../vscode';
+import { shortestUniqueLabels } from '../utils/fileLabels';
 
 // Re-exported for existing importers (SessionsBrowser, ProjectDetail, tests).
 export { parseSystemContent, stripAnsi } from './conversation/systemEvents';
@@ -159,18 +162,41 @@ function SessionMetaRow({ session }: { session: Session }) {
   );
 }
 
+// Enough to recognise a session's footprint at a glance. A large refactor can
+// touch hundreds of files, which would push the conversation off-screen.
+const FILES_PREVIEW_COUNT = 8;
+
 function FilesTouched({ session }: { session: Session }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const files = session.filesModified;
+  const hiddenCount = files.length - FILES_PREVIEW_COUNT;
+  const shown = expanded || hiddenCount <= 0 ? files : files.slice(0, FILES_PREVIEW_COUNT);
+  // Over the whole list, so a chip's label doesn't change when the rest expand.
+  const labels = React.useMemo(() => shortestUniqueLabels(files), [files]);
+
   return (
     <div>
-      <div className="text-xs opacity-50 mb-1">Files touched</div>
-      <div className="flex flex-wrap gap-1">
-        {session.filesModified.map(f => {
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="text-xs opacity-50">Files touched · {files.length}</div>
+        {expanded && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="text-xs opacity-60 hover:opacity-100 transition-opacity"
+          >
+            Show less
+          </button>
+        )}
+      </div>
+      {/* Even expanded, the list scrolls within a bounded box. */}
+      <div className={`flex flex-wrap gap-1 ${expanded ? 'max-h-40 overflow-y-auto' : ''}`}>
+        {shown.map(f => {
           const created = session.filesCreated?.includes(f);
           return (
-            <span
+            <button
               key={f}
-              title={`${created ? 'Created' : 'Edited'}: ${f}`}
-              className="inline-flex items-center gap-1 text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono truncate max-w-[200px] opacity-90"
+              onClick={() => vscode.postMessage({ type: 'openFile', path: f })}
+              title={`Open ${f} (${created ? 'created' : 'edited'})`}
+              className="inline-flex items-center gap-1 text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] hover:bg-[var(--vscode-list-hoverBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono max-w-[200px] opacity-90 hover:opacity-100 transition-colors"
             >
               <span className={created ? 'text-green-400' : 'text-yellow-400'} aria-hidden="true">
                 {created ? (
@@ -179,10 +205,18 @@ function FilesTouched({ session }: { session: Session }) {
                   <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 1.5l3 3-8 8-3.5.5.5-3.5 8-8zm-9 11h11v1.5h-11z" /></svg>
                 )}
               </span>
-              {f.split('/').pop()}
-            </span>
+              <span className="truncate">{labels.get(f)}</span>
+            </button>
           );
         })}
+        {!expanded && hiddenCount > 0 && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-xs px-2 py-0.5 rounded border border-[var(--vscode-panel-border)] opacity-70 hover:opacity-100 transition-opacity"
+          >
+            +{hiddenCount} more
+          </button>
+        )}
       </div>
     </div>
   );
@@ -191,12 +225,12 @@ function FilesTouched({ session }: { session: Session }) {
 // Everything between two user prompts renders as one ResponseGroup so the
 // timeline connector line runs unbroken across the whole response — tool
 // calls, thoughts, text, and system rows alike.
-function conversationBlocks(turns: Turn[], projectRoot: string | null): React.ReactNode[] {
+function conversationBlocks(turns: Turn[], projectRoot: string | null, repliesOnly: boolean): React.ReactNode[] {
   const blocks: React.ReactNode[] = [];
   let group: Turn[] = [];
   const flush = () => {
     if (group.length > 0) {
-      blocks.push(<ResponseGroup key={group[0].id} turns={group} projectRoot={projectRoot} />);
+      blocks.push(<ResponseGroup key={group[0].id} turns={group} projectRoot={projectRoot} repliesOnly={repliesOnly} />);
       group = [];
     }
   };
@@ -212,22 +246,69 @@ function conversationBlocks(turns: Turn[], projectRoot: string | null): React.Re
   return blocks;
 }
 
-export default function SessionDetail({ session, turns, loading }: { session: Session; turns: Turn[]; loading: boolean }) {
+// Full timeline, or just what Claude said back with the work folded away.
+function ViewToggle({ repliesOnly, onChange }: { repliesOnly: boolean; onChange: (value: boolean) => void }) {
+  const option = (value: boolean, label: string) => (
+    <button
+      onClick={() => onChange(value)}
+      aria-pressed={repliesOnly === value}
+      className={repliesOnly === value
+        ? 'px-3 py-1 bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)]'
+        : 'px-3 py-1 opacity-60 hover:opacity-100 transition-colors'}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="ml-auto flex rounded overflow-hidden border border-[var(--vscode-panel-border)] text-xs">
+      {option(false, 'Full timeline')}
+      {option(true, 'Replies only')}
+    </div>
+  );
+}
+
+export default function SessionDetail({ session, turns, loading, failed = false, onRetry, repliesOnly: repliesOnlyProp, onRepliesOnlyChange }: {
+  session: Session;
+  turns: Turn[];
+  loading: boolean;
+  failed?: boolean;
+  onRetry?: () => void;
+  repliesOnly?: boolean;                        // controlled by the parent so it survives switching sessions
+  onRepliesOnlyChange?: (value: boolean) => void;
+}) {
+  const [localRepliesOnly, setLocalRepliesOnly] = React.useState(false);
+  const repliesOnly = repliesOnlyProp ?? localRepliesOnly;
+  const setRepliesOnly = onRepliesOnlyChange ?? setLocalRepliesOnly;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <ResumeButton sessionId={session.id} />
+        <ShareContextButton scope="session" sessionId={session.id} />
+        <ViewToggle repliesOnly={repliesOnly} onChange={setRepliesOnly} />
       </div>
       <SessionMetaRow session={session} />
       {session.filesModified.length > 0 && <FilesTouched session={session} />}
 
       {loading ? (
         <div className="text-xs opacity-40 text-center py-8">Loading turns...</div>
+      ) : failed ? (
+        <div className="text-center py-8 space-y-3">
+          <div className="text-xs opacity-60">Couldn't load this session's conversation.</div>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="text-xs px-3 py-1.5 rounded border border-[var(--vscode-button-background)] text-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-background)] hover:text-[var(--vscode-button-foreground)] transition-colors"
+            >
+              Retry
+            </button>
+          )}
+        </div>
       ) : turns.length === 0 ? (
         <div className="text-xs opacity-40 text-center py-8">No turns recorded for this session.</div>
       ) : (
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          {conversationBlocks(turns, session.cwd)}
+          {conversationBlocks(turns, session.cwd, repliesOnly)}
         </div>
       )}
     </div>

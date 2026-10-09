@@ -6,6 +6,8 @@ import { toolColor } from '../utils/toolColor';
 import { MarkdownView, CommandBlock, MentionText } from '../components/MarkdownView';
 import SessionDetail, { modelLabel, modelBadgeColor } from '../components/SessionDetail';
 import WeeklyStatsTab from '../components/WeeklyStatsTab';
+import ShareContextButton from '../components/ShareContextButton';
+import TabButton from '../components/TabButton';
 
 interface Props {
   project: Project;
@@ -20,6 +22,8 @@ interface Props {
 }
 
 type Tab = 'overview' | 'sessions' | 'activity' | 'setup' | 'work';
+
+const TURNS_TIMEOUT_MS = 15_000;
 
 const TAB_LABELS: Array<{ key: Tab; label: string; description: string }> = [
   { key: 'overview', label: 'Overview', description: 'At-a-glance stats, recent sessions, and quick links.' },
@@ -63,23 +67,47 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
   const sessionDetailRef = useRef<HTMLElement | null>(null);
   const sorted = [...(sessions ?? [])].sort((a, b) => b.startTime - a.startTime);
 
-  const selectSession = useCallback((session: Session) => {
-    setSelectedSession(session);
+  // A reply normally lands well within a second. The timeout only catches one
+  // that never comes, so the panel offers a retry instead of loading forever.
+  const [turnsFailed, setTurnsFailed] = useState(false);
+  // Held here, not in SessionDetail, so it survives switching sessions.
+  const [repliesOnly, setRepliesOnly] = useState(false);
+  const turnsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTurnsTimeout = () => {
+    if (turnsTimeout.current) { clearTimeout(turnsTimeout.current); turnsTimeout.current = null; }
+  };
+  useEffect(() => clearTurnsTimeout, []);
+
+  const requestTurns = useCallback((sessionId: string) => {
     setTurns([]);
     setTurnsLoading(true);
-    vscode.postMessage({ type: 'getSessionTurns', sessionId: session.id });
+    setTurnsFailed(false);
+    clearTurnsTimeout();
+    turnsTimeout.current = setTimeout(() => {
+      setTurnsLoading(false);
+      setTurnsFailed(true);
+    }, TURNS_TIMEOUT_MS);
+    vscode.postMessage({ type: 'getSessionTurns', sessionId });
+  }, []);
+
+  const selectSession = useCallback((session: Session) => {
+    setSelectedSession(session);
+    requestTurns(session.id);
     requestAnimationFrame(() => {
       sessionDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-  }, []);
+  }, [requestTurns]);
 
   // Turn responses + deep-link session selection from the dashboard Sessions tab.
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'sessionTurns' && msg.sessionId === selectedSession?.id) {
+        // Accepted even after a timeout: a late reply still beats a retry.
+        clearTurnsTimeout();
         setTurns(msg.turns ?? []);
         setTurnsLoading(false);
+        setTurnsFailed(false);
       }
       if (msg.type === 'selectSession' && msg.sessionId) {
         const target = (sessions ?? []).find(s => s.id === msg.sessionId);
@@ -157,7 +185,6 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
 
   const hasWork = plans.length > 0 || (projectTodos?.length ?? 0) > 0;
   const visibleTabs = TAB_LABELS.filter(t => t.key !== 'work' || hasWork);
-  const activeMeta = TAB_LABELS.find(t => t.key === activeTab) ?? TAB_LABELS[0];
 
   useEffect(() => {
     if (plans.length === 0) { setSelectedPlanFileName(null); return; }
@@ -180,51 +207,60 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
     if (linkedFile) { focusMemoryFile(linkedFile.fileName); }
   }, [focusMemoryFile, memoryFiles]);
 
+  // An open conversation needs the vertical space; every other view gets a roomier header.
+  const compactHeader = activeTab === 'sessions' && selectedSession !== null;
+  const projectPath = (
+    <button
+      onClick={() => vscode.postMessage({ type: 'openFolder', path: project.path })}
+      className={`min-w-0 text-xs opacity-50 hover:opacity-100 hover:underline font-mono transition-opacity text-left truncate ${compactHeader ? 'flex-1' : 'max-w-full'}`}
+      title={`Open ${project.path}`}
+    >
+      {project.path}
+    </button>
+  );
+  const techBadges = project.techStack?.map(t => (
+    <span key={t} className="text-xs bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] px-2 py-0.5 rounded">{t}</span>
+  ));
+
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start gap-3 mb-2">
-          {project.isActive && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse mt-2" />}
-          <h1 className="text-2xl font-bold">{project.name}</h1>
-          {project.isActive && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">live</span>}
-          <div className="ml-auto flex flex-wrap gap-2">
+    <div className={`px-4 pb-4 sm:px-6 sm:pb-6 max-w-5xl mx-auto ${compactHeader ? 'space-y-3' : 'space-y-5'}`}>
+      {/* Header + tabs: one sticky bar so navigation stays in reach while scrolling */}
+      <header className={`sticky top-0 z-20 bg-[var(--vscode-editor-background)] border-b border-[var(--vscode-panel-border)] ${compactHeader ? 'pt-3' : 'pt-5 sm:pt-6'}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          {project.isActive && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />}
+          <h1 className={`font-bold truncate min-w-0 ${compactHeader ? 'text-lg' : 'text-2xl'}`}>{project.name}</h1>
+          {project.isActive && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full shrink-0">live</span>}
+          {compactHeader ? (
+            <>
+              {projectPath}
+              <div className="hidden md:flex gap-1 shrink-0">{techBadges}</div>
+            </>
+          ) : (
+            <div className="flex-1" />
+          )}
+          <div className="shrink-0">
             <ExportMenu />
           </div>
         </div>
-        <button
-          onClick={() => vscode.postMessage({ type: 'openFolder', path: project.path })}
-          className="text-xs opacity-50 hover:opacity-100 hover:underline font-mono transition-opacity text-left truncate max-w-full"
-          title={`Open ${project.path}`}
-        >
-          {project.path}
-        </button>
-        <div className="flex flex-wrap gap-2 mt-3">
-          {project.techStack?.map(t => (
-            <span key={t} className="text-xs bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] px-2 py-0.5 rounded">{t}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab navigation */}
-      <nav className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] overflow-hidden">
-        <div className="px-2 pt-2">
-          <div className="flex gap-1 overflow-x-auto pb-2">
-            {visibleTabs.map(tab => (
-              <TabButton
-                key={tab.key}
-                label={tab.label}
-                badge={tabBadges[tab.key]}
-                active={activeTab === tab.key}
-                onClick={() => setActiveTab(tab.key)}
-              />
-            ))}
+        {!compactHeader && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 min-w-0">
+            {projectPath}
+            {techBadges && techBadges.length > 0 && <div className="flex flex-wrap gap-1.5">{techBadges}</div>}
           </div>
-        </div>
-        <div className="px-4 py-3 border-t border-[var(--vscode-panel-border)]">
-          <p className="text-sm opacity-60">{activeMeta.description}</p>
-        </div>
-      </nav>
+        )}
+        <nav className={`flex gap-1 overflow-x-auto ${compactHeader ? 'mt-1' : 'mt-4'}`} aria-label="Project sections">
+          {visibleTabs.map(tab => (
+            <TabButton
+              key={tab.key}
+              label={tab.label}
+              description={tab.description}
+              badge={tabBadges[tab.key]}
+              active={activeTab === tab.key}
+              onClick={() => setActiveTab(tab.key)}
+            />
+          ))}
+        </nav>
+      </header>
 
       <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4 sm:p-5">
         {/* ── Overview tab ── */}
@@ -302,7 +338,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
               )}
             </section>
 
-            <section ref={sessionDetailRef} className={`min-w-0 overflow-hidden xl:col-span-2 ${selectedSession ? '' : 'hidden xl:block'}`}>
+            <section ref={sessionDetailRef} className={`min-w-0 overflow-hidden scroll-mt-24 xl:col-span-2 ${selectedSession ? '' : 'hidden xl:block'}`}>
               {selectedSession ? (
                 <>
                   <button
@@ -314,7 +350,16 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                     </svg>
                     All sessions
                   </button>
-                  <SessionDetail key={selectedSession.id} session={selectedSession} turns={turns} loading={turnsLoading} />
+                  <SessionDetail
+                    key={selectedSession.id}
+                    session={selectedSession}
+                    turns={turns}
+                    loading={turnsLoading}
+                    failed={turnsFailed}
+                    onRetry={() => requestTurns(selectedSession.id)}
+                    repliesOnly={repliesOnly}
+                    onRepliesOnlyChange={setRepliesOnly}
+                  />
                 </>
               ) : (
                 <div className="rounded-lg border border-dashed border-[var(--vscode-panel-border)] opacity-50 text-sm text-center px-4 py-12">
@@ -417,6 +462,21 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
         {activeTab === 'setup' && (
           <div className="space-y-8">
             <section>
+              <h3 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Share with other agents</h3>
+              <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm">Generate an <span className="font-mono text-xs">AGENTS.md</span> from this project's guide, memory, commands, and MCP setup.</div>
+                    <div className="text-xs opacity-60 mt-1">
+                      Session transcripts go to <span className="font-mono">.agent-context/</span> with an index. Codex and other agents load these automatically — nothing is committed for you.
+                    </div>
+                  </div>
+                  <ShareContextButton scope="project" />
+                </div>
+              </div>
+            </section>
+
+            <section>
               <h3 className="text-sm font-semibold uppercase tracking-wider opacity-60 mb-3">Claude guide (CLAUDE.md)</h3>
               <div className="rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)]">
                 {config?.claudeMd ? <MarkdownView content={config.claudeMd} /> : (
@@ -450,7 +510,7 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                     <MemoryReferenceList title="Memory Files" detail={`${memoryFiles.length} file${memoryFiles.length !== 1 ? 's' : ''} across ${memoryTypeCount} categor${memoryTypeCount !== 1 ? 'ies' : 'y'}.`} files={memoryFiles} selectedFileName={selectedMemory?.fileName ?? null} onSelect={focusMemoryFile} />
                   )}
                   {selectedMemory && (
-                    <div ref={memoryPreviewRef}>
+                    <div ref={memoryPreviewRef} className="scroll-mt-24">
                       <MemoryPreviewPanel memory={selectedMemory} referenced={memoryReferenceNameSet.has(normalizeMemoryFileName(selectedMemory.fileName))} />
                     </div>
                   )}
@@ -683,23 +743,6 @@ function EmptyPanel({ title, detail, compact = false }: { title: string; detail:
       <div className="text-sm opacity-50">{title}</div>
       <div className="text-xs opacity-40 mt-2 max-w-xl mx-auto">{detail}</div>
     </div>
-  );
-}
-
-function TabButton({ label, badge, active, onClick }: { label: string; badge: string | null; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-t-lg rounded-b-md px-3.5 py-2 text-sm border transition-colors whitespace-nowrap ${active
-          ? 'border-[var(--vscode-panel-border)] border-b-transparent bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] shadow-[inset_0_-2px_0_0_var(--vscode-button-background)]'
-          : 'border-transparent bg-transparent text-[var(--vscode-editor-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--vscode-list-hoverBackground)]'
-        }`}
-    >
-      <span>{label}</span>
-      {badge && (
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${active ? 'bg-black/20 text-current' : 'bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)]'}`}>{badge}</span>
-      )}
-    </button>
   );
 }
 

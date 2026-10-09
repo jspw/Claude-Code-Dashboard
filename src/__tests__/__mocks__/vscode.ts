@@ -8,8 +8,11 @@ export const workspace = {
     update: vi.fn(() => Promise.resolve()),
   })),
   onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+  openTextDocument: vi.fn((options: unknown) => Promise.resolve(options)),
   fs: {
     writeFile: vi.fn(),
+    createDirectory: vi.fn(),
+    readFile: vi.fn(() => Promise.reject(new Error('ENOENT'))),
   },
 };
 
@@ -19,6 +22,7 @@ export const window = {
   showErrorMessage: vi.fn(),
   showInputBox: vi.fn(),
   showSaveDialog: vi.fn(),
+  showTextDocument: vi.fn(),
   createStatusBarItem: vi.fn(() => ({
     text: '',
     tooltip: '',
@@ -42,11 +46,22 @@ export const window = {
     dispose: vi.fn(),
   })),
   registerWebviewViewProvider: vi.fn(),
+  withProgress: vi.fn(
+    (_options: unknown, task: (progress: unknown) => Promise<unknown>) =>
+      task({ report: vi.fn() })
+  ),
 };
 
 export const commands = {
   registerCommand: vi.fn(),
   executeCommand: vi.fn(),
+};
+
+export const env = {
+  clipboard: {
+    writeText: vi.fn(() => Promise.resolve()),
+    readText: vi.fn(() => Promise.resolve('')),
+  },
 };
 
 export const Uri = {
@@ -81,6 +96,12 @@ export enum ViewColumn {
   One = 1,
   Two = 2,
   Three = 3,
+}
+
+export enum ProgressLocation {
+  SourceControl = 1,
+  Window = 10,
+  Notification = 15,
 }
 
 export const ExtensionContext = {};

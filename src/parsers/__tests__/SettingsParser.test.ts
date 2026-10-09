@@ -100,6 +100,34 @@ describe('SettingsParser', () => {
     });
   });
 
+  it('reads a type nested under metadata and unquotes the description', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue(asDirEntries(['nested.md']));
+    vi.mocked(fs.readFileSync).mockImplementation((file) => {
+      if (String(file).endsWith('MEMORY.md')) { return asReadResult('# Index'); }
+      return asReadResult([
+        '---',
+        'name: nested',
+        'description: "Prefers X: because Y"',
+        'metadata:',
+        '  node_type: memory',
+        '  type: feedback',
+        '---',
+        'Body.',
+      ].join('\n'));
+    });
+
+    expect(parser.readProjectMemory('/claude', 'project-1').files).toEqual([
+      {
+        fileName: 'nested.md',
+        name: 'nested',
+        description: 'Prefers X: because Y',
+        type: 'feedback',
+        content: 'Body.',
+      },
+    ]);
+  });
+
   it('reads project plans from common locations and frontmatter', () => {
     vi.mocked(fs.existsSync).mockImplementation((file) => {
       const target = String(file);

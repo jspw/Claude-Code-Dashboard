@@ -1,9 +1,11 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { execSync } from 'child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DashboardStore } from '../DashboardStore';
+import { CACHE_SAVE_DELAY_MS, DashboardStore } from '../DashboardStore';
 import { createPopulatedStore } from '../../__tests__/helpers/store-helpers';
 import { makeProject, makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/sessions';
+import { digestTurns } from '../../parsers/sessionDigest';
 
 vi.mock('fs');
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
@@ -98,6 +100,22 @@ describe('DashboardStore', () => {
 
     return createPopulatedStore([projectA, projectB], { p1: [s1, s2], p2: [s3] }, { p1: [subagent] });
   }
+
+  it('computes analytics from session digests alone', () => {
+    const store = new DashboardStore('/claude');
+    const turns = [
+      makeTurn({ role: 'user', content: 'Fix the login bug', timestamp: NOW - HOUR }),
+      makeTurn({ role: 'assistant', timestamp: NOW - HOUR + 1, toolCalls: [makeToolCall({ name: 'Edit' })] }),
+    ];
+    const session = makeSession({ id: 'd1', projectId: 'p1', startTime: NOW - HOUR, turns: [], digest: digestTurns(turns) });
+    (store as any).projects.set('p1', makeProject({ id: 'p1', name: 'Alpha' }));
+    (store as any).sessions.set('p1', [session]);
+
+    expect(store.getToolUsageStats()).toEqual([expect.objectContaining({ tool: 'Edit', count: 1 })]);
+    expect(store.searchPrompts('login')).toHaveLength(1);
+    expect(store.getPromptPatterns().find(p => p.category === 'Fix/Bug')?.count).toBe(1);
+    expect(store.getProjectStats('p1').recentToolCalls[0]).toMatchObject({ tool: 'Edit', sessionId: 'd1' });
+  });
 
   it('returns sorted projects and direct lookups', () => {
     const store = makeStore();
@@ -542,21 +560,21 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].subagentCostUsd).toBe(0.3);
     expect(store.getSubagentSessions('demo')).toHaveLength(1);
     expect(fs.unlinkSync).toHaveBeenCalledWith('/claude/sessions/dead.json');
-    expect(fs.mkdirSync).toHaveBeenCalledWith('/cache', { recursive: true });
-    expect(fs.writeFileSync).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CACHE_SAVE_DELAY_MS);
+    expect(fs.promises.mkdir).toHaveBeenCalledWith('/cache', { recursive: true });
+    expect(fs.promises.writeFile).toHaveBeenCalled();
 
     parseFile.mockClear();
     vi.mocked(fs.readFileSync).mockImplementation((target) => {
       const value = String(target);
       if (value === '/cache/project-cache.json') {
         return JSON.stringify({
-          version: 2,
+          version: 3,
           entries: {
             demo: {
-              cachedAt: NOW + 5000,
               project: makeProject({ id: 'demo', name: 'demo', path: '/workspace/demo', isActive: false }),
-              sessions: [makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false })],
-              subagentSessions: [],
+              files: { 'session.jsonl': { mtimeMs: NOW - 2000, session: makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false, turns: [] }) } },
+              subagentFiles: { 'child.jsonl': { mtimeMs: NOW, session: makeSession({ id: 'cached-child', projectId: 'demo', turns: [] }) } },
             },
           },
         }) as ReturnType<typeof fs.readFileSync>;
@@ -578,5 +596,178 @@ describe('DashboardStore', () => {
     expect(parseFile).not.toHaveBeenCalled();
     expect(store.getSessions('demo')[0].id).toBe('cached-session');
     expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
+  });
+
+  describe('turns on demand', () => {
+    const FILE = '/claude/projects/p1/s1.jsonl';
+    const storeWith = (session = makeSession({ id: 's1', projectId: 'p1', turns: [], sourceFile: FILE })) => {
+      const store = new DashboardStore('/claude');
+      (store as any).sessions.set('p1', [session]);
+      return store;
+    };
+
+    it('keeps no turns in memory after loading a project', async () => {
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue(['s1.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(makeSession({ id: 's1', turns: [makeTurn()] }));
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', { ids: new Set(), available: true });
+
+      const [session] = store.getSessions('p1');
+      expect(session.turns).toEqual([]);
+      expect(session.digest.userTurns).toHaveLength(1);
+    });
+
+    it('parses a session once, then serves it from memory', () => {
+      const store = storeWith();
+      const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockReturnValue(makeSession({ turns: [makeTurn({ id: 'loaded' })] }));
+
+      expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['loaded']);
+      store.getSessionTurns('p1', 's1');
+      expect(parseFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-reads a session after its file changes', async () => {
+      const store = storeWith();
+      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+      const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockReturnValue(makeSession({ turns: [makeTurn()] }));
+
+      store.getSessionTurns('p1', 's1');
+      await store.onFileChanged(FILE);
+      store.getSessionTurns('p1', 's1');
+      expect(parseFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns no turns when the session or its file is gone', () => {
+      const store = storeWith();
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(null);
+
+      expect(store.getSessionTurns('p1', 's1')).toEqual([]);
+      expect(store.getSessionTurns('p1', 'unknown')).toEqual([]);
+    });
+
+    it('finds subagent sessions too', () => {
+      const store = new DashboardStore('/claude');
+      (store as any).subagentSessions.set('p1', [makeSession({ id: 'sub1', turns: [], sourceFile: '/claude/projects/p1/subagents/sub1.jsonl' })]);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(makeSession({ turns: [makeTurn({ id: 'child' })] }));
+
+      expect(store.getSessionTurns('p1', 'sub1').map(t => t.id)).toEqual(['child']);
+    });
+  });
+
+  describe('cache', () => {
+    it('re-parses only the session file that changed', async () => {
+      const store = new DashboardStore('/claude');
+      const mtimes: Record<string, number> = { 'a.jsonl': 1, 'b.jsonl': 1 };
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockImplementation(() => Object.keys(mtimes) as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockImplementation(p => ({ mtimeMs: mtimes[path.basename(String(p))], size: 10 }) as fs.Stats);
+      const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockImplementation((file: unknown) => makeSession({ id: path.basename(String(file), '.jsonl') }));
+      const live = { ids: new Set<string>(), available: true };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      mtimes['b.jsonl'] = 2;
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+
+      expect(parseFile).toHaveBeenCalledTimes(3);
+      expect(parseFile).toHaveBeenLastCalledWith('/claude/projects/p1/b.jsonl', 'p1');
+      expect(store.getSessions('p1').map(s => s.id).sort()).toEqual(['a', 'b']);
+    });
+
+    it('does not double-count subagent cost when a cached session is reused', async () => {
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockImplementation(p => String(p).endsWith('/subagents'));
+      vi.mocked(fs.readdirSync).mockImplementation(p =>
+        (String(p).endsWith('/subagents') ? ['child.jsonl'] : ['main.jsonl']) as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.mocked(fs.readFileSync).mockReturnValue('' as ReturnType<typeof fs.readFileSync>);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation((file: unknown) =>
+        String(file).endsWith('child.jsonl') ? makeSession({ id: 'child', costUsd: 0.3 }) : makeSession({ id: 'main', costUsd: 1 }));
+      const live = { ids: new Set<string>(), available: true };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+
+      expect(store.getSessions('p1')[0].subagentCostUsd).toBe(0.3);
+    });
+
+    it('re-parses a session that was still active when cached, so it can finish', async () => {
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue(['a.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockReturnValueOnce(makeSession({ id: 'a', isActiveSession: true, endTime: null, durationMs: null }))
+        .mockReturnValueOnce(makeSession({ id: 'a', isActiveSession: false, endTime: 5, durationMs: 60_000 }));
+      const live = { ids: new Set<string>(), available: false };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+
+      expect(store.getSessions('p1')[0]).toMatchObject({ isActiveSession: false, endTime: 5, durationMs: 60_000 });
+    });
+
+    it('drops cached turns when a reload re-parses the file, even without a watcher event', async () => {
+      const store = new DashboardStore('/claude');
+      let mtime = 1;
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue(['s1.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockImplementation(() => ({ mtimeMs: mtime, size: 10 }) as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation(() =>
+        makeSession({ id: 's1', sourceFile: '/claude/projects/p1/s1.jsonl', turns: [makeTurn({ id: `v${mtime}` })] }));
+      const live = { ids: new Set<string>(), available: true };
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['v1']);
+
+      mtime = 2;
+      await (store as any).loadProject('p1', '/claude/projects/p1', live);
+      expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['v2']);
+    });
+
+    it('ignores a cache written by an older version', () => {
+      const store = new DashboardStore('/claude', '/cache');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ version: 2, entries: { p1: {} } }) as ReturnType<typeof fs.readFileSync>);
+
+      (store as any).loadCacheFromDisk();
+      expect((store as any).cacheData).toEqual({ version: 3, entries: {} });
+    });
+
+    it('survives a corrupt cache file', () => {
+      const store = new DashboardStore('/claude', '/cache');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue('{half-written' as ReturnType<typeof fs.readFileSync>);
+
+      expect(() => (store as any).loadCacheFromDisk()).not.toThrow();
+      expect((store as any).cacheData).toEqual({ version: 3, entries: {} });
+    });
+
+    it('writes the cache once per burst of changes, atomically and without turns', async () => {
+      const store = new DashboardStore('/claude', '/cache');
+      (store as any).cacheData.entries.p1 = {
+        project: makeProject(),
+        files: { 's.jsonl': { mtimeMs: 1, size: 1, session: makeSession({ turns: [] }) } },
+        subagentFiles: {},
+      };
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.promises.rename).mockResolvedValue(undefined);
+      vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
+
+      (store as any).scheduleCacheSave();
+      (store as any).scheduleCacheSave();
+      await vi.advanceTimersByTimeAsync(CACHE_SAVE_DELAY_MS);
+
+      expect(fs.promises.writeFile).toHaveBeenCalledTimes(1);
+      const [tmpPath, body] = vi.mocked(fs.promises.writeFile).mock.calls[0];
+      expect(String(tmpPath)).toMatch(/^\/cache\/project-cache\.json\.\d+\.tmp$/);
+      expect(fs.promises.rename).toHaveBeenCalledWith(tmpPath, '/cache/project-cache.json');
+      expect(String(body)).not.toMatch(/"turns":\[\{/);
+    });
   });
 });
