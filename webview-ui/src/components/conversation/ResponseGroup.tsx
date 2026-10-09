@@ -23,9 +23,10 @@ function AssistantMessageBody({ content }: { content: string }) {
 
 type RowKind = 'reply' | 'tool' | 'thought' | 'event';
 
-const STEP_WORDS: [Exclude<RowKind, 'reply'>, string][] = [['tool', 'tool call'], ['thought', 'thought'], ['event', 'event']];
+const STEP_WORDS: [RowKind, string][] = [['tool', 'tool call'], ['reply', 'message'], ['thought', 'thought'], ['event', 'event']];
 
-// "2 tool calls · 1 thought" — what a folded response did besides replying.
+// "2 tool calls · 3 messages · 1 thought" — everything a folded response did
+// before its final reply.
 function stepsLabel(kinds: RowKind[]): string {
   return STEP_WORDS
     .map(([kind, word]) => [kinds.filter(k => k === kind).length, word] as const)
@@ -37,7 +38,8 @@ function stepsLabel(kinds: RowKind[]): string {
 // Everything between two user prompts rendered as one continuous timeline —
 // thought, text, tool, and system-event rows all joined by a single connector
 // line, with one aggregate token footer at the end. With `repliesOnly`, only
-// Claude's text stays; the rest folds into one row that expands this response.
+// Claude's final reply stays — the narration, tools and thinking that led up
+// to it fold into one row that expands this response.
 export function ResponseGroup({ turns, projectRoot, repliesOnly = false }: {
   turns: Turn[];
   projectRoot?: string | null;
@@ -86,9 +88,10 @@ export function ResponseGroup({ turns, projectRoot, repliesOnly = false }: {
 
   if (rows.length === 0) { return null; }
 
-  const steps = rows.filter(row => row.kind !== 'reply');
+  const finalReply = [...rows].reverse().find(row => row.kind === 'reply');
+  const steps = rows.filter(row => row !== finalReply);
   const folding = repliesOnly && steps.length > 0;
-  const shown = folding && !showSteps ? rows.filter(row => row.kind === 'reply') : rows;
+  const shown = folding && !showSteps ? (finalReply ? [finalReply] : []) : rows;
   if (folding) {
     shown.unshift({
       key: 'steps-toggle',

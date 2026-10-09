@@ -97,19 +97,20 @@ describe('ResponseGroup — replies only', () => {
     makeTurn({ id: 'a2', role: 'assistant', content: 'Here is the answer.', timestamp: 2 }),
   ];
 
-  it('shows only the replies and folds everything else into one row', () => {
+  it('shows only the final reply and folds everything before it into one row', () => {
     render(<ResponseGroup turns={turns()} repliesOnly />);
 
-    expect(screen.getByText('Looking into it.')).toBeInTheDocument();
     expect(screen.getByText('Here is the answer.')).toBeInTheDocument();
+    expect(screen.queryByText('Looking into it.')).not.toBeInTheDocument();
     expect(screen.queryByText('Web Fetch')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /2 tool calls · 1 thought/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 tool calls · 1 message · 1 thought/ })).toBeInTheDocument();
   });
 
   it("expands one response's hidden steps on click", () => {
     render(<ResponseGroup turns={turns()} repliesOnly />);
 
     fireEvent.click(screen.getByRole('button', { name: /2 tool calls/ }));
+    expect(screen.getByText('Looking into it.')).toBeInTheDocument();
     expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
   });
 
