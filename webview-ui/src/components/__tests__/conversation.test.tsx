@@ -87,3 +87,44 @@ describe('conversation components', () => {
     expect(screen.queryByTitle('Show full output')).not.toBeInTheDocument();
   });
 });
+
+describe('ResponseGroup — replies only', () => {
+  const turns = () => [
+    makeTurn({ id: 'a1', role: 'assistant', content: 'Looking into it.', thinking: 'hmm', timestamp: 1, toolCalls: [
+      makeToolCall({ id: 'tc1', name: 'WebFetch', input: { url: 'https://example.com' } }),
+      makeToolCall({ id: 'tc2', name: 'WebFetch', input: { url: 'https://example.org' } }),
+    ] }),
+    makeTurn({ id: 'a2', role: 'assistant', content: 'Here is the answer.', timestamp: 2 }),
+  ];
+
+  it('shows only the replies and folds everything else into one row', () => {
+    render(<ResponseGroup turns={turns()} repliesOnly />);
+
+    expect(screen.getByText('Looking into it.')).toBeInTheDocument();
+    expect(screen.getByText('Here is the answer.')).toBeInTheDocument();
+    expect(screen.queryByText('Web Fetch')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 tool calls · 1 thought/ })).toBeInTheDocument();
+  });
+
+  it("expands one response's hidden steps on click", () => {
+    render(<ResponseGroup turns={turns()} repliesOnly />);
+
+    fireEvent.click(screen.getByRole('button', { name: /2 tool calls/ }));
+    expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
+  });
+
+  it('still marks a response that had no reply text', () => {
+    render(<ResponseGroup repliesOnly turns={[
+      makeTurn({ role: 'assistant', content: '', toolCalls: [makeToolCall({ name: 'WebFetch', input: { url: 'https://x.dev' } })] }),
+    ]} />);
+
+    expect(screen.getByRole('button', { name: /1 tool call$/ })).toBeInTheDocument();
+  });
+
+  it('shows the full timeline by default', () => {
+    render(<ResponseGroup turns={turns()} />);
+
+    expect(screen.getAllByText('Web Fetch')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /tool calls/ })).not.toBeInTheDocument();
+  });
+});

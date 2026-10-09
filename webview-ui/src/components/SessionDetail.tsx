@@ -225,12 +225,12 @@ function FilesTouched({ session }: { session: Session }) {
 // Everything between two user prompts renders as one ResponseGroup so the
 // timeline connector line runs unbroken across the whole response — tool
 // calls, thoughts, text, and system rows alike.
-function conversationBlocks(turns: Turn[], projectRoot: string | null): React.ReactNode[] {
+function conversationBlocks(turns: Turn[], projectRoot: string | null, repliesOnly: boolean): React.ReactNode[] {
   const blocks: React.ReactNode[] = [];
   let group: Turn[] = [];
   const flush = () => {
     if (group.length > 0) {
-      blocks.push(<ResponseGroup key={group[0].id} turns={group} projectRoot={projectRoot} />);
+      blocks.push(<ResponseGroup key={group[0].id} turns={group} projectRoot={projectRoot} repliesOnly={repliesOnly} />);
       group = [];
     }
   };
@@ -246,18 +246,46 @@ function conversationBlocks(turns: Turn[], projectRoot: string | null): React.Re
   return blocks;
 }
 
-export default function SessionDetail({ session, turns, loading, failed = false, onRetry }: {
+// Full timeline, or just what Claude said back with the work folded away.
+function ViewToggle({ repliesOnly, onChange }: { repliesOnly: boolean; onChange: (value: boolean) => void }) {
+  const option = (value: boolean, label: string) => (
+    <button
+      onClick={() => onChange(value)}
+      aria-pressed={repliesOnly === value}
+      className={repliesOnly === value
+        ? 'px-3 py-1 bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)]'
+        : 'px-3 py-1 opacity-60 hover:opacity-100 transition-colors'}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="ml-auto flex rounded overflow-hidden border border-[var(--vscode-panel-border)] text-xs">
+      {option(false, 'Full timeline')}
+      {option(true, 'Replies only')}
+    </div>
+  );
+}
+
+export default function SessionDetail({ session, turns, loading, failed = false, onRetry, repliesOnly: repliesOnlyProp, onRepliesOnlyChange }: {
   session: Session;
   turns: Turn[];
   loading: boolean;
   failed?: boolean;
   onRetry?: () => void;
+  repliesOnly?: boolean;                        // controlled by the parent so it survives switching sessions
+  onRepliesOnlyChange?: (value: boolean) => void;
 }) {
+  const [localRepliesOnly, setLocalRepliesOnly] = React.useState(false);
+  const repliesOnly = repliesOnlyProp ?? localRepliesOnly;
+  const setRepliesOnly = onRepliesOnlyChange ?? setLocalRepliesOnly;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <ResumeButton sessionId={session.id} />
         <ShareContextButton scope="session" sessionId={session.id} />
+        <ViewToggle repliesOnly={repliesOnly} onChange={setRepliesOnly} />
       </div>
       <SessionMetaRow session={session} />
       {session.filesModified.length > 0 && <FilesTouched session={session} />}
@@ -280,7 +308,7 @@ export default function SessionDetail({ session, turns, loading, failed = false,
         <div className="text-xs opacity-40 text-center py-8">No turns recorded for this session.</div>
       ) : (
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          {conversationBlocks(turns, session.cwd)}
+          {conversationBlocks(turns, session.cwd, repliesOnly)}
         </div>
       )}
     </div>

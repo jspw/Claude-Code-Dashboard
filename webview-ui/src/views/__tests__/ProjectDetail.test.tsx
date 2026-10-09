@@ -326,3 +326,18 @@ describe('ProjectDetail — loading a session', () => {
     expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
   });
 });
+
+describe('ProjectDetail — replies only', () => {
+  it('keeps "Replies only" when you open another session', () => {
+    const sessions = [
+      makeSession({ id: 's1', sessionSummary: 'First summary' }),
+      makeSession({ id: 's2', sessionSummary: 'Second summary' }),
+    ];
+    render(<ProjectDetail project={makeProject()} sessions={sessions} initialSessionId="s1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replies only' }));
+    fireEvent.click(screen.getByRole('button', { name: /Second summary/ }));
+
+    expect(screen.getByRole('button', { name: 'Replies only' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});

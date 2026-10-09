@@ -69,6 +69,8 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
   // A reply normally lands well within a second. The timeout only catches one
   // that never comes, so the panel offers a retry instead of loading forever.
   const [turnsFailed, setTurnsFailed] = useState(false);
+  // Held here, not in SessionDetail, so it survives switching sessions.
+  const [repliesOnly, setRepliesOnly] = useState(false);
   const turnsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTurnsTimeout = () => {
     if (turnsTimeout.current) { clearTimeout(turnsTimeout.current); turnsTimeout.current = null; }
@@ -346,6 +348,8 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
                     loading={turnsLoading}
                     failed={turnsFailed}
                     onRetry={() => requestTurns(selectedSession.id)}
+                    repliesOnly={repliesOnly}
+                    onRepliesOnlyChange={setRepliesOnly}
                   />
                 </>
               ) : (

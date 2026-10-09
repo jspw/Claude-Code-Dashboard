@@ -318,3 +318,22 @@ describe('SessionDetail — files touched', () => {
     expect(screen.queryByRole('button', { name: /more|Show less/ })).not.toBeInTheDocument();
   });
 });
+
+describe('SessionDetail — replies only', () => {
+  it('switches the conversation between the full timeline and replies only', () => {
+    const turns = [
+      makeTurn({ role: 'user', content: 'Fix it' }),
+      makeTurn({ role: 'assistant', content: 'Done.', toolCalls: [makeToolCall({ name: 'WebFetch', input: { url: 'https://example.com' } })] }),
+    ];
+    render(<SessionDetail session={makeSession({ turns })} turns={turns} loading={false} />);
+    expect(screen.getByText('Web Fetch')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replies only' }));
+    expect(screen.queryByText('Web Fetch')).not.toBeInTheDocument();
+    expect(screen.getByText('Done.')).toBeInTheDocument();
+    expect(screen.getByText('Fix it')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full timeline' }));
+    expect(screen.getByText('Web Fetch')).toBeInTheDocument();
+  });
+});
