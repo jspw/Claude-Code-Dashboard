@@ -248,6 +248,7 @@ export interface ProjectConfig {
 }
 
 const CACHE_VERSION = 2;
+const TURN_CACHE_SIZE = 3;
 
 interface CacheEntry {
   cachedAt: number;
@@ -272,6 +273,8 @@ export class DashboardStore extends EventEmitter {
   private sessionParser: SessionParser;
   private settingsParser: SettingsParser;
   private emitDebounce?: NodeJS.Timeout;
+  // Full turns for recently opened sessions, keyed by file, least recent first.
+  private turnCache: Map<string, Turn[]> = new Map();
 
   constructor(claudeDir: string, cacheDir?: string) {
     super();
@@ -411,8 +414,7 @@ export class DashboardStore extends EventEmitter {
 
         const session = this.sessionParser.parseFile(filePath, encodedId);
         if (session) {
-          (session as any).parentSessionId = parentSessionId;
-          parsed.push(session);
+          parsed.push({ ...session, parentSessionId, turns: [] });
           const key = parentSessionId ?? '__unknown__';
           costs.set(key, (costs.get(key) ?? 0) + session.costUsd);
         }
@@ -464,7 +466,7 @@ export class DashboardStore extends EventEmitter {
           if (liveResult.available) {
             (session as any).isActiveSession = liveResult.ids.has(session.id);
           }
-          parsedSessions.push(session);
+          parsedSessions.push({ ...session, turns: [] });
           totalTokens += session.totalTokens;
           totalCostUsd += session.costUsd;
           sessionCount++;
@@ -947,7 +949,35 @@ export class DashboardStore extends EventEmitter {
     this.debouncedEmitUpdated();
   }
 
+  /**
+   * A session's full turns, read from its JSONL on demand. Only digests stay in
+   * memory; the few most recently opened sessions are kept so switching back
+   * and forth doesn't re-parse a large file.
+   */
+  getSessionTurns(projectId: string, sessionId: string): Turn[] {
+    const session = (this.sessions.get(projectId) ?? []).find(s => s.id === sessionId)
+      ?? (this.subagentSessions.get(projectId) ?? []).find(s => s.id === sessionId);
+    if (!session?.sourceFile) { return []; }
+
+    const file = session.sourceFile;
+    const cached = this.turnCache.get(file);
+    if (cached) {
+      this.turnCache.delete(file);
+      this.turnCache.set(file, cached);
+      return cached;
+    }
+
+    const turns = this.sessionParser.parseFile(file, projectId)?.turns ?? [];
+    this.turnCache.set(file, turns);
+    if (this.turnCache.size > TURN_CACHE_SIZE) {
+      this.turnCache.delete(this.turnCache.keys().next().value as string);
+    }
+    return turns;
+  }
+
   async onFileChanged(filePath: string) {
+    // The live session is appended to constantly; never serve its old turns.
+    this.turnCache.delete(filePath);
     const projectsDir = path.join(this.claudeDir, 'projects');
     const rel = path.relative(projectsDir, filePath);
     const projectId = rel.split(path.sep)[0];

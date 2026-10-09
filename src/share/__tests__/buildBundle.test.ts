@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildBundle } from '../buildBundle';
-import { makeProject, makeProjectConfig, makeSession } from '../../__tests__/fixtures/sessions';
+import { makeProject, makeProjectConfig, makeSession, makeTurn } from '../../__tests__/fixtures/sessions';
 
 const project = makeProject({ path: '/home/user/test-project' });
 const config = makeProjectConfig();
@@ -95,5 +95,12 @@ describe('buildBundle', () => {
     const sessions = [makeSession(), makeSession()];
     const agents = buildBundle(project, config, sessions)[0];
     expect(agents.content).toContain('2 sessions indexed');
+  });
+
+  it('renders each transcript from turns fetched on demand', () => {
+    const files = buildBundle(project, config, [makeSession({ id: 's1', turns: [] })], new Date(0),
+      () => [makeTurn({ role: 'user', content: 'Loaded on demand' })]);
+
+    expect(files.find(f => f.relativePath.includes('/sessions/'))!.content).toContain('Loaded on demand');
   });
 });

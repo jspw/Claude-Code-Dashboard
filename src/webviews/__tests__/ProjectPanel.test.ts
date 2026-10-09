@@ -14,6 +14,7 @@ type ProjectStoreMock = {
   getProject: ReturnType<typeof vi.fn>;
   getSessions: ReturnType<typeof vi.fn>;
   getSubagentSessions: ReturnType<typeof vi.fn>;
+  getSessionTurns: ReturnType<typeof vi.fn>;
   getProjectConfig: ReturnType<typeof vi.fn>;
   getProjectStats: ReturnType<typeof vi.fn>;
   getProjectFiles: ReturnType<typeof vi.fn>;
@@ -61,6 +62,7 @@ describe('ProjectPanel', () => {
       getProject: vi.fn(() => ({ id: 'p1', name: 'Alpha' } as unknown as Project)),
       getSessions: vi.fn(() => sessions),
       getSubagentSessions: vi.fn(() => [{ id: 'sub1', turns: [{ id: 'st1' }], startTime: 1 }] as unknown as Session[]),
+      getSessionTurns: vi.fn(() => [{ id: 't1' }]),
       getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [], plans: [], memory: { index: null, files: [] }, hooks: [] } as ProjectConfig)),
       getProjectStats: vi.fn(() => ({
         toolUsage: [],
@@ -122,6 +124,7 @@ describe('ProjectPanel', () => {
       getProject: vi.fn(() => undefined),
       getSessions: vi.fn(() => []),
       getSubagentSessions: vi.fn(() => []),
+      getSessionTurns: vi.fn(() => []),
       getProjectConfig: vi.fn(() => ({ claudeMd: null, mcpServers: {}, projectSettings: {}, commands: [], plans: [], memory: { index: null, files: [] }, hooks: [] } as ProjectConfig)),
       getProjectStats: vi.fn(() => ({
         toolUsage: [],
@@ -208,15 +211,15 @@ describe('ProjectPanel', () => {
     }
   });
 
-  it('serves turns for subagent sessions as well as main ones', async () => {
+  it('posts the turns the store reads for the requested session', async () => {
     let messageHandler: (msg: ProjectMessage) => Promise<void> | void = () => {};
-    const subagent = { id: 'sub1', turns: [{ id: 't9' }], startTime: 1 };
     const store = {
       on: vi.fn(),
       off: vi.fn(),
       getProject: vi.fn(() => undefined),
       getSessions: vi.fn(() => []),
-      getSubagentSessions: vi.fn(() => [subagent]),
+      getSubagentSessions: vi.fn(() => []),
+      getSessionTurns: vi.fn(() => [{ id: 't9' }]),
       getProjectConfig: vi.fn(() => ({})),
       getProjectStats: vi.fn(() => ({})),
       getProjectFiles: vi.fn(() => []),
@@ -234,6 +237,7 @@ describe('ProjectPanel', () => {
     ProjectPanel.createOrShow(context, store as unknown as DashboardStore, 'p1');
     await messageHandler({ type: 'getSessionTurns', sessionId: 'sub1' });
 
+    expect(store.getSessionTurns).toHaveBeenCalledWith('p1', 'sub1');
     expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: 'sessionTurns', sessionId: 'sub1', turns: [{ id: 't9' }] });
   });
 

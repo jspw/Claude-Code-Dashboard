@@ -63,13 +63,10 @@ export class ProjectPanel {
         );
       }
       if (msg.type === 'getSessionTurns') {
-        // The Sessions tab can list subagent sessions too, so look there as well.
-        const session = store.getSessions(projectId).find(s => s.id === msg.sessionId)
-          ?? store.getSubagentSessions(projectId).find(s => s.id === msg.sessionId);
         this.panel.webview.postMessage({
           type: 'sessionTurns',
           sessionId: msg.sessionId,
-          turns: session?.turns ?? [],
+          turns: store.getSessionTurns(projectId, msg.sessionId),
         });
       }
       if (msg.type === 'openFile' && msg.path) {

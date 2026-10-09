@@ -20,12 +20,15 @@ const sessionA = makeSession({ id: 's1', sessionSummary: 'First' });
 const sessionB = makeSession({ id: 's2', sessionSummary: 'Second' });
 
 function makeStore(overrides: Partial<Record<string, unknown>> = {}): DashboardStore {
-  return {
+  const store: Record<string, any> = {
     getProject: vi.fn(() => project),
     getSessions: vi.fn(() => [sessionA, sessionB]),
     getProjectConfig: vi.fn(() => makeProjectConfig()),
     ...overrides,
-  } as unknown as DashboardStore;
+  };
+  store.getSessionTurns ??= vi.fn((_projectId: string, id: string) =>
+    store.getSessions().find((s: { id: string }) => s.id === id)?.turns ?? []);
+  return store as unknown as DashboardStore;
 }
 
 const writtenPaths = () => fs.writeFile.mock.calls.map(call => call[0].fsPath as string);
@@ -190,6 +193,17 @@ describe('shareContext', () => {
     const written = fs.writeFile.mock.calls.map(call => new TextDecoder().decode(call[1] as Uint8Array)).join('\n');
     expect(written).toContain('Notes live in ~/notes.');
     expect(written).not.toContain('/home/user');
+  });
+
+  it('reads turns through the store, not from the in-memory session', async () => {
+    const lean = makeSession({ id: 's5', turns: [] });
+    const store = makeStore({
+      getSessions: vi.fn(() => [lean]),
+      getSessionTurns: vi.fn(() => [makeTurn({ role: 'user', content: 'From disk' })]),
+    });
+
+    await shareContext(store, 'p1', 'session', 's5', '/home/user');
+    expect(clipboard.writeText.mock.calls[0][0]).toContain('From disk');
   });
 
   it('runs generation inside a progress notification', async () => {

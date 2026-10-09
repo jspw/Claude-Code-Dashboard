@@ -596,4 +596,65 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].id).toBe('cached-session');
     expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
   });
+
+  describe('turns on demand', () => {
+    const FILE = '/claude/projects/p1/s1.jsonl';
+    const storeWith = (session = makeSession({ id: 's1', projectId: 'p1', turns: [], sourceFile: FILE })) => {
+      const store = new DashboardStore('/claude');
+      (store as any).sessions.set('p1', [session]);
+      return store;
+    };
+
+    it('keeps no turns in memory after loading a project', async () => {
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      vi.mocked(fs.readdirSync).mockReturnValue(['s1.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(makeSession({ id: 's1', turns: [makeTurn()] }));
+
+      await (store as any).loadProject('p1', '/claude/projects/p1', { ids: new Set(), available: true });
+
+      const [session] = store.getSessions('p1');
+      expect(session.turns).toEqual([]);
+      expect(session.digest.userTurns).toHaveLength(1);
+    });
+
+    it('parses a session once, then serves it from memory', () => {
+      const store = storeWith();
+      const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockReturnValue(makeSession({ turns: [makeTurn({ id: 'loaded' })] }));
+
+      expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['loaded']);
+      store.getSessionTurns('p1', 's1');
+      expect(parseFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-reads a session after its file changes', async () => {
+      const store = storeWith();
+      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+      const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
+        .mockReturnValue(makeSession({ turns: [makeTurn()] }));
+
+      store.getSessionTurns('p1', 's1');
+      await store.onFileChanged(FILE);
+      store.getSessionTurns('p1', 's1');
+      expect(parseFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns no turns when the session or its file is gone', () => {
+      const store = storeWith();
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(null);
+
+      expect(store.getSessionTurns('p1', 's1')).toEqual([]);
+      expect(store.getSessionTurns('p1', 'unknown')).toEqual([]);
+    });
+
+    it('finds subagent sessions too', () => {
+      const store = new DashboardStore('/claude');
+      (store as any).subagentSessions.set('p1', [makeSession({ id: 'sub1', turns: [], sourceFile: '/claude/projects/p1/subagents/sub1.jsonl' })]);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(makeSession({ turns: [makeTurn({ id: 'child' })] }));
+
+      expect(store.getSessionTurns('p1', 'sub1').map(t => t.id)).toEqual(['child']);
+    });
+  });
 });

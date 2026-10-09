@@ -1,4 +1,4 @@
-import type { Project, ProjectConfig, Session } from '../store/DashboardStore';
+import type { Project, ProjectConfig, Session, Turn } from '../store/DashboardStore';
 import type { BundleFile, TranscriptEntry } from './types';
 import { AGENTS_FILE, INDEX_FILE, SESSIONS_DIR } from './types';
 import { slugify } from './markdown';
@@ -31,7 +31,8 @@ export function buildBundle(
   project: Project,
   config: ProjectConfig,
   sessions: Session[],
-  generatedAt: Date = new Date()
+  generatedAt: Date = new Date(),
+  turnsFor: (session: Session) => Turn[] = session => session.turns
 ): BundleFile[] {
   const ordered = [...sessions].sort((a, b) => b.startTime - a.startTime);
 
@@ -54,7 +55,8 @@ export function buildBundle(
   ordered.forEach((session, i) => {
     files.push({
       relativePath: `${SESSIONS_DIR}/${entries[i].fileName}`,
-      content: renderTranscript(session, project.path),
+      // One session's turns in memory at a time, however large the project.
+      content: renderTranscript({ ...session, turns: turnsFor(session) }, project.path),
     });
   });
 

@@ -23,6 +23,7 @@ const mockStore = {
   getProjects: vi.fn(() => [{ id: 'p1', name: 'Alpha' }]),
   getProject: vi.fn<() => { id: string; name: string; path?: string } | undefined>(() => ({ id: 'p1', name: 'Alpha' })),
   getSessions: vi.fn<() => ExportSession[]>(() => []),
+  getSessionTurns: vi.fn(() => [{ id: 't1' }]),
   on: vi.fn(),
 };
 
@@ -135,6 +136,8 @@ describe('extension activate', () => {
 
     expect(mockStore.refresh).toHaveBeenCalledOnce();
     expect(vscode.workspace.fs.writeFile).toHaveBeenCalledTimes(2);
+    const jsonBytes = vi.mocked(vscode.workspace.fs.writeFile).mock.calls[0][1] as Uint8Array;
+    expect(new TextDecoder().decode(jsonBytes)).toContain('"t1"');
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Sessions exported to /tmp/sessions.json');
   });
 

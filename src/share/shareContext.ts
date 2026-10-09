@@ -30,7 +30,8 @@ async function shareSession(store: DashboardStore, project: Project, sessionId: 
     return;
   }
 
-  const text = redactHome(renderHandoff(project, session), homeDir);
+  const turns = store.getSessionTurns(project.id, session.id);
+  const text = redactHome(renderHandoff(project, { ...session, turns }), homeDir);
   await vscode.env.clipboard.writeText(text);
 
   const tokens = estimateTokens(text);
@@ -78,7 +79,7 @@ async function shareProject(store: DashboardStore, project: Project, homeDir: st
       title: `Generating agent context for ${project.name}…`,
     },
     async () => {
-      const files = buildBundle(project, config, sessions)
+      const files = buildBundle(project, config, sessions, new Date(), s => store.getSessionTurns(project.id, s.id))
         .map(file => ({ ...file, content: redactHome(file.content, homeDir) }));
       return writeBundle(files, project.path);
     }

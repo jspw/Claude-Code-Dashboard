@@ -81,7 +81,12 @@ export async function activate(context: vscode.ExtensionContext) {
         );
         content = header + rows.join('\n');
       } else {
-        content = JSON.stringify(sessions, null, 2);
+        // Exports carry full turns, read from disk; the digest and source path are internal.
+        const full = sessions.map(({ digest: _digest, sourceFile: _sourceFile, ...s }) => ({
+          ...s,
+          turns: store.getSessionTurns(projectId, s.id),
+        }));
+        content = JSON.stringify(full, null, 2);
       }
 
       const encoder = new TextEncoder();
