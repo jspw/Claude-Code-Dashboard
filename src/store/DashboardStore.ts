@@ -468,9 +468,7 @@ export class DashboardStore extends EventEmitter {
           totalTokens += session.totalTokens;
           totalCostUsd += session.costUsd;
           sessionCount++;
-          const sessionLatest = session.endTime ?? (session.turns.length > 0
-            ? session.turns[session.turns.length - 1].timestamp
-            : session.startTime);
+          const sessionLatest = session.endTime ?? session.digest.lastTurnAt ?? session.startTime;
           if (sessionLatest > lastActive) { lastActive = sessionLatest; }
         }
       }
@@ -651,8 +649,7 @@ export class DashboardStore extends EventEmitter {
     for (const project of this.getProjects()) {
       const sessions = this.getSessions(project.id);
       for (const session of sessions) {
-        for (const turn of session.turns) {
-          if (turn.role !== 'user') { continue; }
+        for (const turn of session.digest.userTurns) {
           const content = turn.content.toLowerCase();
           const idx = content.indexOf(q);
           if (idx === -1) { continue; }
@@ -687,8 +684,8 @@ export class DashboardStore extends EventEmitter {
 
     for (const [, sessions] of this.sessions) {
       for (const session of sessions) {
-        for (const turn of session.turns) {
-          if (turn.role !== 'user' || !turn.content) { continue; }
+        for (const turn of session.digest.userTurns) {
+          if (!turn.content) { continue; }
           const text = turn.content;
 
           if (/\b(fix|bug|error|crash|broken|issue|fail|wrong|debug)\b/i.test(text)) {
@@ -748,12 +745,8 @@ export class DashboardStore extends EventEmitter {
       ...(this.subagentSessions.get(projectId) ?? []),
     ];
     for (const session of allSessions) {
-      for (const turn of session.turns) {
-        for (const tc of turn.toolCalls) {
-          if (tc.mcpServer && mcpServers[tc.mcpServer]) {
-            mcpServers[tc.mcpServer].toolCallCount++;
-          }
-        }
+      for (const [server, count] of Object.entries(session.digest.mcpCounts)) {
+        if (mcpServers[server]) { mcpServers[server].toolCallCount += count; }
       }
     }
 
@@ -796,31 +789,17 @@ export class DashboardStore extends EventEmitter {
     const results: SessionTodoSnapshot[] = [];
 
     for (const session of sessions) {
-      // Find the last TodoWrite call in this session to get final state
-      let lastTodoCall: ToolCall | null = null;
-      let lastTodoTimestamp = 0;
-      for (const turn of session.turns) {
-        for (const tc of turn.toolCalls) {
-          if (tc.name === 'TodoWrite' && tc.input?.todos) {
-            lastTodoCall = tc;
-            lastTodoTimestamp = turn.timestamp;
-          }
-        }
-      }
-      if (lastTodoCall && Array.isArray(lastTodoCall.input.todos)) {
-        const todos = (lastTodoCall.input.todos as Array<{ content?: string; status?: string; activeForm?: string }>)
-          .map(t => ({
-            content: (t.content as string) ?? '',
-            status: (t.status as string) ?? 'pending',
-          }));
-        results.push({
-          sessionId: session.id,
-          sessionDate: session.startTime,
-          sessionSummary: session.sessionSummary,
-          todos,
-          timestamp: lastTodoTimestamp,
-        });
-      }
+      const last = session.digest.lastTodos;
+      if (!last) { continue; }
+      const todos = (last.todos as Array<{ content?: string; status?: string }>)
+        .map(t => ({ content: t.content ?? '', status: t.status ?? 'pending' }));
+      results.push({
+        sessionId: session.id,
+        sessionDate: session.startTime,
+        sessionSummary: session.sessionSummary,
+        todos,
+        timestamp: last.timestamp,
+      });
     }
 
     results.sort((a, b) => b.timestamp - a.timestamp);
@@ -903,8 +882,8 @@ export class DashboardStore extends EventEmitter {
     for (const project of this.getProjects()) {
       const sessions = this.getSessions(project.id);
       for (const session of sessions) {
-        for (const turn of session.turns) {
-          if (turn.role !== 'user' || !turn.content) { continue; }
+        for (const turn of session.digest.userTurns) {
+          if (!turn.content) { continue; }
           results.push({
             projectId: project.id,
             projectName: project.name,
@@ -986,11 +965,9 @@ export class DashboardStore extends EventEmitter {
 
     for (const [, sessions] of this.sessions) {
       for (const session of sessions) {
-        for (const turn of session.turns) {
-          for (const tc of turn.toolCalls) {
-            counts.set(tc.name, (counts.get(tc.name) ?? 0) + 1);
-            total++;
-          }
+        for (const [tool, count] of Object.entries(session.digest.toolCounts)) {
+          counts.set(tool, (counts.get(tool) ?? 0) + count);
+          total += count;
         }
       }
     }
@@ -1194,10 +1171,8 @@ export class DashboardStore extends EventEmitter {
           projectTokenMap.set(project.id, { name: project.name, tokens: session.totalTokens });
         }
 
-        for (const turn of session.turns) {
-          for (const tc of turn.toolCalls) {
-            toolCounts.set(tc.name, (toolCounts.get(tc.name) ?? 0) + 1);
-          }
+        for (const [tool, count] of Object.entries(session.digest.toolCounts)) {
+          toolCounts.set(tool, (toolCounts.get(tool) ?? 0) + count);
         }
       }
     }
@@ -1286,11 +1261,9 @@ export class DashboardStore extends EventEmitter {
     const toolCounts: Map<string, number> = new Map();
     let totalTools = 0;
     for (const s of sessions) {
-      for (const turn of s.turns) {
-        for (const tc of turn.toolCalls) {
-          toolCounts.set(tc.name, (toolCounts.get(tc.name) ?? 0) + 1);
-          totalTools++;
-        }
+      for (const [tool, count] of Object.entries(s.digest.toolCounts)) {
+        toolCounts.set(tool, (toolCounts.get(tool) ?? 0) + count);
+        totalTools += count;
       }
     }
     const toolUsage: ToolUsageStat[] = Array.from(toolCounts.entries())
@@ -1300,8 +1273,8 @@ export class DashboardStore extends EventEmitter {
     // Prompt patterns
     const counts: Record<string, number> = { 'Fix/Bug': 0, 'Explain': 0, 'Refactor': 0, 'Feature': 0, 'Test': 0, 'Other': 0 };
     for (const s of sessions) {
-      for (const t of s.turns) {
-        if (t.role !== 'user' || !t.content) { continue; }
+      for (const t of s.digest.userTurns) {
+        if (!t.content) { continue; }
         if (/\b(fix|bug|error|crash|broken|issue|fail|wrong|debug)\b/i.test(t.content))         { counts['Fix/Bug']++; }
         else if (/\b(explain|what|how|why|understand|describe|help me|tell me)\b/i.test(t.content)) { counts['Explain']++; }
         else if (/\b(refactor|clean|improve|optimize|restructure|simplify)\b/i.test(t.content))     { counts['Refactor']++; }
@@ -1340,10 +1313,8 @@ export class DashboardStore extends EventEmitter {
     type TcEntry = { tool: string; input: Record<string, unknown>; sessionId: string; sessionDate: number; timestamp: number };
     const allCalls: TcEntry[] = [];
     for (const s of sessions) {
-      for (const turn of s.turns) {
-        for (const tc of turn.toolCalls) {
-          allCalls.push({ tool: tc.name, input: tc.input, sessionId: s.id, sessionDate: s.startTime, timestamp: turn.timestamp });
-        }
+      for (const call of s.digest.recentToolCalls) {
+        allCalls.push({ ...call, sessionId: s.id, sessionDate: s.startTime });
       }
     }
     allCalls.sort((a, b) => b.timestamp - a.timestamp);

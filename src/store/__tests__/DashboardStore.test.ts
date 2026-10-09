@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardStore } from '../DashboardStore';
 import { createPopulatedStore } from '../../__tests__/helpers/store-helpers';
 import { makeProject, makeSession, makeToolCall, makeTurn } from '../../__tests__/fixtures/sessions';
+import { digestTurns } from '../../parsers/sessionDigest';
 
 vi.mock('fs');
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
@@ -98,6 +99,22 @@ describe('DashboardStore', () => {
 
     return createPopulatedStore([projectA, projectB], { p1: [s1, s2], p2: [s3] }, { p1: [subagent] });
   }
+
+  it('computes analytics from session digests alone', () => {
+    const store = new DashboardStore('/claude');
+    const turns = [
+      makeTurn({ role: 'user', content: 'Fix the login bug', timestamp: NOW - HOUR }),
+      makeTurn({ role: 'assistant', timestamp: NOW - HOUR + 1, toolCalls: [makeToolCall({ name: 'Edit' })] }),
+    ];
+    const session = makeSession({ id: 'd1', projectId: 'p1', startTime: NOW - HOUR, turns: [], digest: digestTurns(turns) });
+    (store as any).projects.set('p1', makeProject({ id: 'p1', name: 'Alpha' }));
+    (store as any).sessions.set('p1', [session]);
+
+    expect(store.getToolUsageStats()).toEqual([expect.objectContaining({ tool: 'Edit', count: 1 })]);
+    expect(store.searchPrompts('login')).toHaveLength(1);
+    expect(store.getPromptPatterns().find(p => p.category === 'Fix/Bug')?.count).toBe(1);
+    expect(store.getProjectStats('p1').recentToolCalls[0]).toMatchObject({ tool: 'Edit', sessionId: 'd1' });
+  });
 
   it('returns sorted projects and direct lookups', () => {
     const store = makeStore();
