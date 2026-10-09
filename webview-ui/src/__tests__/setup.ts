@@ -52,6 +52,9 @@ globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }));
 
+// Mock scrollIntoView (not implemented by jsdom)
+Element.prototype.scrollIntoView = vi.fn();
+
 Object.defineProperty(globalThis.navigator, 'clipboard', {
   value: {
     writeText: vi.fn(() => Promise.resolve()),
