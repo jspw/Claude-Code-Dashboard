@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.11.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.10.0...claude-code-dashboard-v1.11.0) (2026-10-09)
+
+
+### Features
+
+* **conversation:** render markdown tables and question cards ([#46](https://github.com/jspw/Claude-Code-Dashboard/issues/46)) ([81d43e2](https://github.com/jspw/Claude-Code-Dashboard/commit/81d43e2cff7baf9423c790eea21f0fafce38a587))
+
 ## [1.10.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.9.0...claude-code-dashboard-v1.10.0) (2026-10-09)
 
 
