@@ -123,6 +123,7 @@ export interface Turn {
   timestamp: number;
   attachments?: TurnAttachment[];  // files the user @-tagged in this prompt
   thinking?: string;    // extended-thinking text emitted before this turn's content
+  isMeta?: boolean;     // injected by Claude Code (skill instructions, command templates), not typed
 }
 
 export interface TurnAttachment {

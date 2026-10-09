@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
+import { promptText } from './promptText';
 
 /** Date the pricing table below was last synced against published Anthropic pricing. */
 export const PRICING_TABLE_DATE = '2026-06';
@@ -119,17 +120,19 @@ export class SessionParser {
               ? rawContent.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('')
               : typeof rawContent === 'string' ? rawContent : '';
 
-            // Skip internal command messages and IDE-injected context for turn content
+            // Skip internal command messages and IDE/harness-injected context for turn content
             const displayText = text
               .replace(/<command-message>.*?<\/command-message>/gs, '')
               .replace(/<ide_opened_file>.*?<\/ide_opened_file>/gs, '')
               .replace(/<ide_selection>.*?<\/ide_selection>/gs, '')
+              .replace(/<browser_instruction>.*?<\/browser_instruction>/gs, '')
               .trim();
 
-            // Capture first meaningful user prompt as session summary, skipping
-            // injected skill instructions (they aren't the user's actual prompt).
-            if (!sessionSummary && displayText.length > 0 && !displayText.startsWith('Base directory for this skill:')) {
-              sessionSummary = displayText.slice(0, 120) + (displayText.length > 120 ? '…' : '');
+            // Capture the first prompt the user actually typed as the session
+            // summary — not injected skill instructions or command templates.
+            const prompt = entry.isMeta ? null : promptText(displayText);
+            if (!sessionSummary && prompt) {
+              sessionSummary = prompt.slice(0, 120) + (prompt.length > 120 ? '…' : '');
             }
 
             // Pure tool-result entries are not prompts — skip the turn entirely.
@@ -142,6 +145,7 @@ export class SessionParser {
                 outputTokens: 0,
                 toolCalls: [],
                 timestamp: ts,
+                ...(entry.isMeta ? { isMeta: true } : {}),
                 ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}),
               });
               pendingAttachments = [];
