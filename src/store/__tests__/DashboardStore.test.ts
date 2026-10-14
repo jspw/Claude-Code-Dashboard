@@ -632,14 +632,16 @@ describe('DashboardStore', () => {
 
     it('re-reads a session after its file changes', async () => {
       const store = storeWith();
-      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.readdirSync).mockReturnValue(['s1.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
       const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
-        .mockReturnValue(makeSession({ turns: [makeTurn()] }));
+        .mockReturnValue(makeSession({ id: 's1', sourceFile: FILE, turns: [makeTurn()] }));
 
       store.getSessionTurns('p1', 's1');
       await store.onFileChanged(FILE);
+      parseFile.mockClear();
       store.getSessionTurns('p1', 's1');
-      expect(parseFile).toHaveBeenCalledTimes(2);
+      expect(parseFile).toHaveBeenCalledTimes(1);
     });
 
     it('returns no turns when the session or its file is gone', () => {
@@ -768,6 +770,66 @@ describe('DashboardStore', () => {
       expect(String(tmpPath)).toMatch(/^\/cache\/project-cache\.json\.\d+\.tmp$/);
       expect(fs.promises.rename).toHaveBeenCalledWith(tmpPath, '/cache/project-cache.json');
       expect(String(body)).not.toMatch(/"turns":\[\{/);
+    });
+  });
+
+  describe('removed projects', () => {
+    // A fake ~/.claude/projects: project dir -> its session files.
+    let dirs: Record<string, string[]>;
+
+    function storeOverDirs() {
+      dirs = { p1: ['a.jsonl'], p2: ['b.jsonl'] };
+      const store = new DashboardStore('/claude');
+      vi.mocked(fs.existsSync).mockImplementation(p => String(p) === '/claude/projects');
+      vi.mocked(fs.readdirSync).mockImplementation(((p: fs.PathLike, options?: unknown) => {
+        const dir = String(p);
+        if (dir === '/claude/projects') {
+          const names = Object.keys(dirs);
+          return (options ? names.map(name => ({ name, isDirectory: () => true })) : names) as unknown as ReturnType<typeof fs.readdirSync>;
+        }
+        const files = dirs[path.basename(dir)];
+        if (!files) { throw Object.assign(new Error(`ENOENT: ${dir}`), { code: 'ENOENT' }); }
+        return files as unknown as ReturnType<typeof fs.readdirSync>;
+      }) as typeof fs.readdirSync);
+      vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
+      vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation((file: unknown) =>
+        makeSession({ id: path.basename(String(file), '.jsonl'), projectId: path.basename(path.dirname(String(file))) }));
+      return store;
+    }
+
+    it('drops a project whose directory was deleted on refresh', async () => {
+      const store = storeOverDirs();
+      await store.refresh();
+      expect(store.getProjects().map(p => p.id).sort()).toEqual(['p1', 'p2']);
+
+      delete dirs.p2;
+      await store.refresh();
+
+      expect(store.getProjects().map(p => p.id)).toEqual(['p1']);
+      expect(store.getProject('p2')).toBeUndefined();
+      expect(store.getSessions('p2')).toEqual([]);
+      expect((store as any).cacheData.entries.p2).toBeUndefined();
+    });
+
+    it('drops a project whose directory is deleted while watching', async () => {
+      const store = storeOverDirs();
+      await store.refresh();
+
+      delete dirs.p2;
+      await store.onFileChanged('/claude/projects/p2/b.jsonl');
+
+      expect(store.getProject('p2')).toBeUndefined();
+      expect(store.getProject('p1')).toBeDefined();
+    });
+
+    it('drops a project once its last session file is gone', async () => {
+      const store = storeOverDirs();
+      await store.refresh();
+
+      dirs.p2 = [];
+      await store.onFileChanged('/claude/projects/p2/b.jsonl');
+
+      expect(store.getProject('p2')).toBeUndefined();
     });
   });
 });
