@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.11.1](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.11.0...claude-code-dashboard-v1.11.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* prune deleted projects, gate watcher work to the focused window ([#48](https://github.com/jspw/Claude-Code-Dashboard/issues/48)) ([1d471d6](https://github.com/jspw/Claude-Code-Dashboard/commit/1d471d6fad0da250070879a598f40967565b2305))
+
 ## [1.11.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.10.0...claude-code-dashboard-v1.11.0) (2026-10-09)
 
 
