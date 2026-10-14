@@ -18,7 +18,8 @@ describe('ProjectDetail view', () => {
     expect(screen.getByText('Project not found.')).toBeInTheDocument();
   });
 
-  it('renders 5 tabs, selects sessions, requests turns, and handles exports', async () => {
+  // Walks every tab in one render: ~0.6 s alone, but past the 5 s default on a loaded machine.
+  it('renders 5 tabs, selects sessions, requests turns, and handles exports', { timeout: 20_000 }, async () => {
     const project = makeProject({ isActive: true, techStack: ['TypeScript', 'React'] });
     const now = Date.now();
     const sessions = [
