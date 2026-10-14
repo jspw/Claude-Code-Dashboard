@@ -46,6 +46,8 @@ export const window = {
     dispose: vi.fn(),
   })),
   registerWebviewViewProvider: vi.fn(),
+  state: { focused: true },
+  onDidChangeWindowState: vi.fn((_listener: unknown) => ({ dispose: vi.fn() })),
   withProgress: vi.fn(
     (_options: unknown, task: (progress: unknown) => Promise<unknown>) =>
       task({ report: vi.fn() })

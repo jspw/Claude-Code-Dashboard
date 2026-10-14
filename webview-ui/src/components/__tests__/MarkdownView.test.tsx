@@ -12,6 +12,15 @@ describe('MarkdownView', () => {
     expect(screen.getByText('Next paragraph.')).toBeInTheDocument();
   });
 
+  it('renders a bare # and #-prefixed code lines without hanging (#42)', () => {
+    const { container } = render(<MarkdownView content={'#'} />);
+    expect(container.textContent).toBe('#');
+
+    render(<MarkdownView content={'Intro line\n#include <stdio.h>\n#hashtag\n#'} />);
+    expect(screen.getByText('#include <stdio.h>')).toBeInTheDocument();
+    expect(screen.getByText('#hashtag')).toBeInTheDocument();
+  });
+
   it('renders headings, emphasis, code blocks, and lists', () => {
     render(<MarkdownView content={'# Title\n\nParagraph with `code` and **bold** and *italic*\n\n- one\n- two\n\n1. first\n2. second\n\n```ts\nconst x = 1;\n```'} />);
 

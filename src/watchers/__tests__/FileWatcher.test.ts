@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import type * as vscode from 'vscode';
+import { window } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileWatcher } from '../FileWatcher';
 
@@ -79,5 +80,39 @@ describe('FileWatcher', () => {
     expect(errorSpy).toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
     errorSpy.mockRestore();
+  });
+
+  it('holds changes back while the window is unfocused and applies them on focus (#34)', () => {
+    const onFileChanged = vi.fn();
+    let fire: ((event: string, name: string) => void) | undefined;
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.watch).mockImplementation(((...args: unknown[]) => {
+      fire = args[2] as typeof fire;
+      return { close: vi.fn(), on: vi.fn() } as unknown as fs.FSWatcher;
+    }) as typeof fs.watch);
+    let onWindowState: ((state: { focused: boolean }) => void) | undefined;
+    vi.mocked(window.onDidChangeWindowState).mockImplementation(listener => {
+      onWindowState = listener as typeof onWindowState;
+      return { dispose: vi.fn() };
+    });
+    const state = window.state as { focused: boolean };
+    state.focused = false;
+
+    new FileWatcher('/claude', { onFileChanged } as unknown as ConstructorParameters<typeof FileWatcher>[1])
+      .start({ subscriptions: [] } as unknown as vscode.ExtensionContext);
+    fire!('change', 'proj/a.jsonl');
+    fire!('change', 'proj/b.jsonl');
+    fire!('change', 'proj/a.jsonl');
+    vi.advanceTimersByTime(300);
+    expect(onFileChanged).not.toHaveBeenCalled();
+
+    state.focused = true;
+    onWindowState!({ focused: true });
+    expect(onFileChanged.mock.calls.map(([file]) => file).sort()).toEqual(['/claude/projects/proj/a.jsonl', '/claude/projects/proj/b.jsonl']);
+
+    onWindowState!({ focused: true });
+    fire!('change', 'proj/c.jsonl');
+    vi.advanceTimersByTime(300);
+    expect(onFileChanged).toHaveBeenCalledTimes(3);
   });
 });

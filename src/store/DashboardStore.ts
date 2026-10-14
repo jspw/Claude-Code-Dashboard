@@ -400,16 +400,28 @@ export class DashboardStore extends EventEmitter {
   private async scanProjects() {
     this.loadCacheFromDisk();
     const projectsDir = path.join(this.claudeDir, 'projects');
-    if (!fs.existsSync(projectsDir)) { return; }
+    const entries = fs.existsSync(projectsDir) ? fs.readdirSync(projectsDir, { withFileTypes: true }) : [];
 
     // Read live session IDs once for all projects instead of per-project
     const liveResult = this.getLiveSessionIds();
-    const entries = fs.readdirSync(projectsDir, { withFileTypes: true });
+    const seen = new Set<string>();
     for (const entry of entries) {
       if (!entry.isDirectory()) { continue; }
+      seen.add(entry.name);
       await this.loadProject(entry.name, path.join(projectsDir, entry.name), liveResult);
     }
+    // A project whose directory is gone would otherwise stay listed until restart.
+    for (const id of [...this.projects.keys(), ...Object.keys(this.cacheData.entries)]) {
+      if (!seen.has(id)) { this.forgetProject(id); }
+    }
     this.scheduleCacheSave();
+  }
+
+  private forgetProject(id: string) {
+    this.projects.delete(id);
+    this.sessions.delete(id);
+    this.subagentSessions.delete(id);
+    delete this.cacheData.entries[id];
   }
 
   /** Check if a process with the given pid is still running */
@@ -476,9 +488,18 @@ export class DashboardStore extends EventEmitter {
   }
 
   private async loadProject(encodedId: string, projectDir: string, liveResult?: { ids: Set<string>; available: boolean }) {
+    let sessionFiles: string[];
     try {
-      const sessionFiles = fs.readdirSync(projectDir).filter(f => f.endsWith('.jsonl'));
-      if (sessionFiles.length === 0) { return; }
+      sessionFiles = fs.readdirSync(projectDir).filter(f => f.endsWith('.jsonl'));
+    } catch {
+      sessionFiles = []; // the directory was deleted
+    }
+    if (sessionFiles.length === 0) {
+      this.forgetProject(encodedId);
+      return;
+    }
+
+    try {
 
       // Use provided live IDs or fetch them (e.g. when called from onFileChanged)
       if (!liveResult) { liveResult = this.getLiveSessionIds(); }
