@@ -103,6 +103,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 | `vscode.ts` | `acquireVsCodeApi()` bridge |
 | `utils/format.ts` | `formatTokens()`, `formatDuration()`, `timeAgo()` |
 | `utils/toolColor.ts` | Tool name → consistent color mapping |
+| `utils/contextTimeline.ts` | Turns' per-call `usage` → chart points; flags compactions (marker or sharp context drop) and cache misses (idle past the cache's lifetime — 1 h main sessions, 5 min subagents — model switch, or other) |
 
 **Views:**
 
@@ -118,6 +119,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 |---|---|
 | `SessionDetail.tsx` (+ `modelLabel`, `modelBadgeColor`) | ProjectDetail → Sessions tab; session meta header + copy-resume-command button; renders turns via `conversation/` |
 | `conversation/` (`ConversationTurn`, `ResponseGroup`, `UserMessageCard`, `ThinkingRow`, `ToolCallRow`, `AgentCallBlock`, `QuestionsBlock`, `SkillContextRow`, `SystemEventRow`, `shared.tsx`, `systemEvents.ts`) | Claude-Code-extension-style conversation timeline: user prompt cards ("You" header + accent border), tool-colored dots joined by connector lines (everything between two user prompts merges into one `ResponseGroup`), tool "OUT" output boxes, AskUserQuestion cards (options with the picked ones marked, typed "Other" text, notes), project-relative file hints, show-less-by-default messages |
+| `ContextTimeline.tsx` | SessionDetail, above the conversation: collapsible context size + cost per API call, marking compactions and cache misses |
 | `SessionsBrowser.tsx` | Dashboard → Sessions tab (cross-project rows + backend-served prompt search) |
 | `WeeklyStatsTab.tsx` | ProjectDetail → Activity (usage trend) |
 | `MarkdownView.tsx` (+ `CommandBlock`) | ProjectDetail → Setup (CLAUDE.md, memory, commands) |
@@ -161,7 +163,7 @@ Session turns are **lazy-loaded from disk**: the store keeps each session's `dig
 
 - **Project** — `{ id, name, path, lastActive, isActive, sessionCount, totalTokens, totalCostUsd, techStack[] }`
 - **Session** — `{ id, projectId, parentSessionId, startTime, endTime, durationMs, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens, costUsd, promptCount, toolCallCount, filesModified[], filesCreated[], turns[], sessionSummary, hasThinking, thinkingTokens, cacheHitRate, subagentCostUsd, idleTimeMs, activeTimeMs, activityRatio, model }`
-- **Turn** — `{ id, role, content, inputTokens, outputTokens, toolCalls[], timestamp, thinking? }`
+- **Turn** — `{ id, role, content, inputTokens, outputTokens, toolCalls[], timestamp, thinking?, isCompactSummary?, usage? }`. Claude Code writes one JSONL entry per content block, each repeating the response's usage; the parser counts a response once (by `message.id` + `requestId`) and puts its `usage` (`TurnUsage`: input, cacheWrite, cacheWrite1h, cacheRead, output, costUsd, model, compacted?) on the first entry only. Cost is priced per call at that call's model, with 1-hour cache writes at 2x input
 - **ToolCall** — `{ id, name, input, output?, mcpServer? }`
 - **ProjectConfig** — `{ claudeMd, mcpServers, projectSettings, commands[], memory, hooks[] }`
 - **ProjectStats** — `{ usageOverTime[], toolUsage[], promptPatterns[], efficiency, recentToolCalls[], weeklyStats }`

@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '../../__tests__/helpers/render-helpers';
 import { makeToolCall, makeTurn } from '../../__tests__/fixtures/test-data';
-import { ConversationTurn } from '../conversation/ConversationTurn';
+import { ConversationTurn, isPromptTurn } from '../conversation/ConversationTurn';
 import { SystemEventRow } from '../conversation/SystemEventRow';
 import { AgentCallBlock } from '../conversation/AgentCallBlock';
 import { ResponseGroup } from '../conversation/ResponseGroup';
@@ -44,6 +44,20 @@ describe('conversation components', () => {
       <SystemEventRow event={{ kind: 'skill', name: 's', body: 'b' }} />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders a compaction summary as a collapsed row, not a prompt', () => {
+    const summary = makeTurn({
+      role: 'user', content: 'This session is being continued from a previous conversation.', isCompactSummary: true, timestamp: 1,
+    });
+    expect(isPromptTurn(summary)).toBe(false);
+
+    render(<ConversationTurn turn={summary} />);
+    expect(screen.getByText('Conversation compacted')).toBeInTheDocument();
+    expect(screen.queryByText(/being continued/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Show summary'));
+    expect(screen.getByText(/being continued/)).toBeInTheDocument();
   });
 
   it('collapses agent blocks to a preview and handles missing prompts', () => {

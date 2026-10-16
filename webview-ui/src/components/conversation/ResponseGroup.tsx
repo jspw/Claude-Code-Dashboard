@@ -3,7 +3,7 @@ import { Turn } from '../../types';
 import { formatTokens } from '../../utils/format';
 import { toolColor } from '../../utils/toolColor';
 import { CopyButton, ExpandableMarkdown, TimelineRow } from './shared';
-import { parseSystemContent } from './systemEvents';
+import { parseSystemContent, SystemEvent } from './systemEvents';
 import { SystemEventRow } from './SystemEventRow';
 import { SkillContextRow } from './SkillContextRow';
 import { ThinkingRow } from './ThinkingRow';
@@ -57,12 +57,14 @@ export function ResponseGroup({ turns, projectRoot, repliesOnly = false }: {
     // System-injected "user" turns (slash commands, stdout, skill payloads)
     // ride the same timeline as muted rows.
     if (turn.role === 'user') {
-      const sys = content ? parseSystemContent(content) : null;
+      const sys: SystemEvent | 'skip' | null = turn.isCompactSummary
+        ? { kind: 'compaction', body: content }
+        : content ? parseSystemContent(content) : null;
       if (!sys || sys === 'skip') { continue; }
       rows.push({
         key: turn.id,
         kind: 'event',
-        node: sys.kind === 'skill' ? <SkillContextRow event={sys} /> : <SystemEventRow event={sys} />,
+        node: sys.kind === 'skill' || sys.kind === 'compaction' ? <SkillContextRow event={sys} /> : <SystemEventRow event={sys} />,
       });
       continue;
     }
