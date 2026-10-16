@@ -8,6 +8,7 @@ import SessionDetail, { modelLabel, modelBadgeColor } from '../components/Sessio
 import WeeklyStatsTab from '../components/WeeklyStatsTab';
 import ShareContextButton from '../components/ShareContextButton';
 import TabButton from '../components/TabButton';
+import LiveDot, { liveLabel } from '../components/LiveDot';
 
 interface Props {
   project: Project;
@@ -227,9 +228,13 @@ export default function ProjectDetail({ project, sessions, subagentSessions, con
       {/* Header + tabs: one sticky bar so navigation stays in reach while scrolling */}
       <header className={`sticky top-0 z-20 bg-[var(--vscode-editor-background)] border-b border-[var(--vscode-panel-border)] ${compactHeader ? 'pt-3' : 'pt-5 sm:pt-6'}`}>
         <div className="flex items-center gap-2 min-w-0">
-          {project.isActive && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />}
+          {project.isActive && <LiveDot status={project.liveStatus} className="w-2 h-2" />}
           <h1 className={`font-bold truncate min-w-0 ${compactHeader ? 'text-lg' : 'text-2xl'}`}>{project.name}</h1>
-          {project.isActive && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full shrink-0">live</span>}
+          {project.isActive && (
+            <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${project.liveStatus === 'waiting' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+              {liveLabel(project.liveStatus) ?? 'live'}
+            </span>
+          )}
           {compactHeader ? (
             <>
               {projectPath}
@@ -680,7 +685,7 @@ function SessionListItem({ session: s, selected, onSelect }: { session: Session;
         : 'hover:bg-[var(--vscode-list-hoverBackground)]'}`}
     >
       <div className="flex items-center gap-1.5 min-w-0">
-        {s.isActiveSession && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />}
+        {s.isActiveSession && <LiveDot status={s.liveStatus} waitingFor={s.waitingFor} />}
         <span className="font-medium truncate flex-1 min-w-0">
           {s.sessionSummary ? <MentionText text={s.sessionSummary} /> : <span className="opacity-40 italic">Untitled session</span>}
         </span>

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import { EventEmitter } from 'events';
+import { LiveSessionReader, LiveSessions, LiveStatus } from './liveSessions';
 import { SessionParser } from '../parsers/SessionParser';
 import { SettingsParser } from '../parsers/SettingsParser';
 import type { SessionDigest } from '../parsers/sessionDigest';
@@ -77,6 +78,7 @@ export interface Project {
   path: string;         // absolute path on disk
   lastActive: number;   // unix timestamp ms
   isActive: boolean;    // has an active session right now
+  liveStatus?: LiveStatus | null;  // its most pressing live session's state: waiting, then busy, then idle
   sessionCount: number;
   totalTokens: number;
   totalCostUsd: number;
@@ -89,6 +91,8 @@ export interface Session {
   parentSessionId: string | null;  // set for subagent sessions, null for top-level
   cwd: string | null;
   isActiveSession: boolean;
+  liveStatus?: LiveStatus | null;  // what the running session is doing, from ~/.claude/sessions
+  waitingFor?: string | null;      // set while waiting, e.g. "permission prompt"
   startTime: number;
   endTime: number | null;
   durationMs: number | null;
@@ -192,6 +196,8 @@ export interface SessionRow {
   promptCount: number;
   toolCallCount: number;
   isActiveSession: boolean;
+  liveStatus?: LiveStatus | null;
+  waitingFor?: string | null;
 }
 
 export interface McpServer {
@@ -276,6 +282,20 @@ interface CacheFile {
   entries: Record<string, CacheEntry>;
 }
 
+/** The session as ~/.claude/sessions reports it; with nothing there to read, the parser's guess stands. */
+function withLiveState(session: Session, live: LiveSessions): Session {
+  if (!live.available) { return session; }
+  const state = live.sessions.get(session.id);
+  return { ...session, isActiveSession: state !== undefined, liveStatus: state?.status ?? null, waitingFor: state?.waitingFor ?? null };
+}
+
+// A session waiting on the user matters more than one working, which matters more than one sitting idle.
+const STATUS_URGENCY: LiveStatus[] = ['waiting', 'busy', 'idle'];
+
+function mostPressingStatus(sessions: Session[]): LiveStatus | null {
+  return STATUS_URGENCY.find(status => sessions.some(s => s.isActiveSession && s.liveStatus === status)) ?? null;
+}
+
 export class DashboardStore extends EventEmitter {
   private claudeDir: string;
   private cacheDir: string | null;
@@ -289,6 +309,7 @@ export class DashboardStore extends EventEmitter {
   private emitDebounce?: NodeJS.Timeout;
   // Full turns for recently opened sessions, keyed by file, least recent first.
   private turnCache: Map<string, Turn[]> = new Map();
+  private liveSessions: LiveSessionReader;
 
   constructor(claudeDir: string, cacheDir?: string) {
     super();
@@ -296,6 +317,7 @@ export class DashboardStore extends EventEmitter {
     this.cacheDir = cacheDir ?? null;
     this.sessionParser = new SessionParser();
     this.settingsParser = new SettingsParser();
+    this.liveSessions = new LiveSessionReader(claudeDir);
   }
 
   private getCachePath(): string | null {
@@ -368,21 +390,6 @@ export class DashboardStore extends EventEmitter {
     return session;
   }
 
-  /** The first parent-session reference in a subagent log, if any. */
-  private readParentSessionId(filePath: string): string | null {
-    try {
-      for (const line of fs.readFileSync(filePath, 'utf-8').split('\n')) {
-        if (!line.trim()) { continue; }
-        try {
-          const entry = JSON.parse(line);
-          const pid = entry.parentSessionId ?? entry.parent_session_id ?? entry.parentId ?? null;
-          if (pid) { return String(pid); }
-        } catch { continue; }
-      }
-    } catch { /* unreadable: no parent */ }
-    return null;
-  }
-
   private debouncedEmitUpdated() {
     if (this.emitDebounce) { clearTimeout(this.emitDebounce); }
     this.emitDebounce = setTimeout(() => this.emit('updated'), 200);
@@ -403,13 +410,13 @@ export class DashboardStore extends EventEmitter {
     const projectsDir = path.join(this.claudeDir, 'projects');
     const entries = fs.existsSync(projectsDir) ? fs.readdirSync(projectsDir, { withFileTypes: true }) : [];
 
-    // Read live session IDs once for all projects instead of per-project
-    const liveResult = this.getLiveSessionIds();
+    // Read live sessions once for all projects instead of per-project
+    const live = this.liveSessions.read();
     const seen = new Set<string>();
     for (const entry of entries) {
       if (!entry.isDirectory()) { continue; }
       seen.add(entry.name);
-      await this.loadProject(entry.name, path.join(projectsDir, entry.name), liveResult);
+      await this.loadProject(entry.name, path.join(projectsDir, entry.name), live);
     }
     // A project whose directory is gone would otherwise stay listed until restart.
     for (const id of [...this.projects.keys(), ...Object.keys(this.cacheData.entries)]) {
@@ -425,41 +432,11 @@ export class DashboardStore extends EventEmitter {
     delete this.cacheData.entries[id];
   }
 
-  /** Check if a process with the given pid is still running */
-  private isPidAlive(pid: number): boolean {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /** Read ~/.claude/sessions/ and return live session IDs + whether PID tracking is available */
-  private getLiveSessionIds(): { ids: Set<string>; available: boolean } {
-    const liveIds = new Set<string>();
-    const sessionsDir = path.join(this.claudeDir, 'sessions');
-    if (!fs.existsSync(sessionsDir)) { return { ids: liveIds, available: false }; }
-    try {
-      const files = fs.readdirSync(sessionsDir);
-      for (const file of files) {
-        try {
-          const content = fs.readFileSync(path.join(sessionsDir, file), 'utf-8');
-          const meta = JSON.parse(content) as { pid?: number; sessionId?: string };
-          if (meta.pid && meta.sessionId && this.isPidAlive(meta.pid)) {
-            liveIds.add(meta.sessionId);
-          } else if (meta.pid && !this.isPidAlive(meta.pid)) {
-            try { fs.unlinkSync(path.join(sessionsDir, file)); } catch {}
-          }
-        } catch { /* skip malformed */ }
-      }
-    } catch { /* ignore */ }
-    return { ids: liveIds, available: true };
-  }
-
   /**
-   * Parse subagents/*.jsonl — stores the full sessions and returns a cost map
-   * keyed by parent session ID (or '__unknown__') for cost attribution.
+   * Parse the project's subagent transcripts — stores the full sessions and
+   * returns their cost keyed by parent session ID for attribution. Claude Code
+   * writes them to <project>/<sessionId>/subagents/agent-<agentId>.jsonl; each
+   * line's own `sessionId` is the parent's, so the parent is read off the folder.
    */
   private loadSubagentSessions(
     projectDir: string,
@@ -469,26 +446,32 @@ export class DashboardStore extends EventEmitter {
   ): Map<string, number> {
     const costs = new Map<string, number>();
     const parsed: Session[] = [];
-    const subagentsDir = path.join(projectDir, 'subagents');
-    if (!fs.existsSync(subagentsDir)) {
-      this.subagentSessions.set(encodedId, []);
-      return costs;
-    }
+    let sessionDirs: string[] = [];
     try {
-      for (const file of fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'))) {
-        const session = this.loadSessionFile(subagentsDir, file, encodedId, previous, into,
-          (filePath, s) => ({ ...s, parentSessionId: this.readParentSessionId(filePath) }));
+      sessionDirs = fs.readdirSync(projectDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name);
+    } catch { /* the project directory was deleted */ }
+
+    for (const parentId of sessionDirs) {
+      let files: string[];
+      try {
+        files = fs.readdirSync(path.join(projectDir, parentId, 'subagents')).filter(f => f.endsWith('.jsonl'));
+      } catch {
+        continue;   // a session that ran no subagents, or another folder such as memory/
+      }
+      for (const file of files) {
+        // Relative to the project, so the cache key stays unique across sessions.
+        const session = this.loadSessionFile(projectDir, path.join(parentId, 'subagents', file), encodedId, previous, into,
+          (_filePath, s) => ({ ...s, parentSessionId: parentId }));
         if (!session) { continue; }
         parsed.push(session);
-        const key = session.parentSessionId ?? '__unknown__';
-        costs.set(key, (costs.get(key) ?? 0) + session.costUsd);
+        costs.set(parentId, (costs.get(parentId) ?? 0) + session.costUsd);
       }
-    } catch { /* ignore */ }
+    }
     this.subagentSessions.set(encodedId, parsed);
     return costs;
   }
 
-  private async loadProject(encodedId: string, projectDir: string, liveResult?: { ids: Set<string>; available: boolean }) {
+  private async loadProject(encodedId: string, projectDir: string, live?: LiveSessions) {
     let sessionFiles: string[];
     try {
       sessionFiles = fs.readdirSync(projectDir).filter(f => f.endsWith('.jsonl'));
@@ -502,8 +485,8 @@ export class DashboardStore extends EventEmitter {
 
     try {
 
-      // Use provided live IDs or fetch them (e.g. when called from onFileChanged)
-      if (!liveResult) { liveResult = this.getLiveSessionIds(); }
+      // Use the provided live sessions or read them (e.g. when called from onFileChanged)
+      if (!live) { live = this.liveSessions.read(); }
 
       // Unchanged files come from the cache; only changed ones are parsed.
       const previous = this.cacheData.entries[encodedId];
@@ -523,11 +506,7 @@ export class DashboardStore extends EventEmitter {
         if (!loaded) { continue; }
         // A fresh copy per load: subagent costs are attributed onto it below,
         // and the cached original must not accumulate them across reloads.
-        const session: Session = {
-          ...loaded,
-          subagentCostUsd: 0,
-          isActiveSession: liveResult.available ? liveResult.ids.has(loaded.id) : loaded.isActiveSession,
-        };
+        const session: Session = { ...withLiveState(loaded, live), subagentCostUsd: 0 };
         if (!resolvedCwd && session.cwd) { resolvedCwd = session.cwd; }
         parsedSessions.push(session);
         totalTokens += session.totalTokens;
@@ -537,12 +516,13 @@ export class DashboardStore extends EventEmitter {
         if (sessionLatest > lastActive) { lastActive = sessionLatest; }
       }
 
-      // Attribute subagent costs: use parentSessionId when known, else newest session
+      // Attribute subagent costs to their parent session, or to the newest one
+      // when the parent's transcript is gone, so the project total stays whole.
       const newest = parsedSessions.length > 0
         ? parsedSessions.reduce((a, b) => a.startTime > b.startTime ? a : b)
         : null;
       for (const [parentId, cost] of subagentCosts) {
-        const target = (parentId !== '__unknown__' ? parsedSessions.find(s => s.id === parentId) : null) ?? newest;
+        const target = parsedSessions.find(s => s.id === parentId) ?? newest;
         if (target) {
           (target as any).subagentCostUsd = ((target as any).subagentCostUsd ?? 0) + cost;
           totalCostUsd += cost;
@@ -560,6 +540,7 @@ export class DashboardStore extends EventEmitter {
         path: projectPath,
         lastActive,
         isActive,
+        liveStatus: mostPressingStatus(parsedSessions),
         sessionCount,
         totalTokens,
         totalCostUsd,
@@ -984,6 +965,8 @@ export class DashboardStore extends EventEmitter {
           promptCount: s.promptCount,
           toolCallCount: s.toolCallCount,
           isActiveSession: s.isActiveSession,
+          liveStatus: s.liveStatus ?? null,
+          waitingFor: s.waitingFor ?? null,
         });
       }
     }
@@ -992,7 +975,9 @@ export class DashboardStore extends EventEmitter {
   }
 
   handleLiveEvent(event: LiveEvent) {
-    if (event.type === 'session_stop' && event.sessionId) {
+    // The Stop hook fires when a turn ends, not when the session closes, so the
+    // session files decide what it is doing now; the hook is only the fallback.
+    if (event.type === 'session_stop' && event.sessionId && !this.refreshLiveSessions()) {
       for (const [projectId, sessions] of this.sessions) {
         for (const session of sessions) {
           if (session.id === event.sessionId && session.isActiveSession) {
@@ -1008,6 +993,35 @@ export class DashboardStore extends EventEmitter {
     }
     this.emit('liveEvent', event);
     this.debouncedEmitUpdated();
+  }
+
+  /**
+   * Re-reads which sessions are running and what they're doing, without
+   * re-parsing transcripts: a session can stop on a permission prompt without
+   * writing a line. Returns false when there are no session files to read.
+   */
+  refreshLiveSessions(): boolean {
+    const live = this.liveSessions.read();
+    if (!live.available) { return false; }
+    let changed = false;
+    for (const [projectId, sessions] of this.sessions) {
+      const next = sessions.map(s => {
+        const updated = withLiveState(s, live);
+        const same = updated.isActiveSession === s.isActiveSession
+          && updated.liveStatus === (s.liveStatus ?? null)
+          && updated.waitingFor === (s.waitingFor ?? null);
+        if (same) { return s; }
+        changed = true;
+        return updated;
+      });
+      this.sessions.set(projectId, next);
+      const project = this.projects.get(projectId);
+      if (project) {
+        this.projects.set(projectId, { ...project, isActive: next.some(s => s.isActiveSession), liveStatus: mostPressingStatus(next) });
+      }
+    }
+    if (changed) { this.debouncedEmitUpdated(); }
+    return true;
   }
 
   /**

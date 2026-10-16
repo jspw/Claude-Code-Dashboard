@@ -29,6 +29,7 @@ import RecentChanges from '../components/RecentChanges';
 import ProductivityChart from '../components/ProductivityChart';
 import SessionsBrowser from '../components/SessionsBrowser';
 import TabButton from '../components/TabButton';
+import LiveDot, { liveLabel } from '../components/LiveDot';
 
 interface Props {
   projects: Project[];
@@ -503,9 +504,9 @@ function ActiveProjectCard({ project }: { project: Project }) {
       className="text-left rounded-lg border border-green-500/35 bg-green-500/5 p-4 hover:bg-green-500/10 transition-colors w-full"
     >
       <div className="flex items-center gap-2 mb-2">
-        <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+        <LiveDot status={project.liveStatus} className="w-2 h-2" />
         <span className="font-semibold">{project.name}</span>
-        <span className="ml-auto text-xs opacity-50">live</span>
+        <span className="ml-auto text-xs opacity-50">{liveLabel(project.liveStatus) ?? 'live'}</span>
       </div>
       <div className="text-xs opacity-60 truncate">{project.path}</div>
       <div className="mt-2 flex gap-3 text-xs">

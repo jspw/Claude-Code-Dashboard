@@ -7,9 +7,12 @@ export class FileWatcher {
   private claudeDir: string;
   private store: DashboardStore;
   private watcher?: fs.FSWatcher;
+  private sessionsWatcher?: fs.FSWatcher;
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+  private sessionsTimer?: NodeJS.Timeout;
   // Changes seen while this window is unfocused, applied once it regains focus.
   private pending: Set<string> = new Set();
+  private liveSessionsPending = false;
 
   constructor(claudeDir: string, store: DashboardStore) {
     this.claudeDir = claudeDir;
@@ -45,6 +48,8 @@ export class FileWatcher {
       console.error('Claude Code Dashboard: failed to start file watcher on', projectsDir, e);
     }
 
+    this.watchLiveSessions();
+
     const focusListener = vscode.window.onDidChangeWindowState(state => {
       if (state.focused) { this.flushPending(); }
     });
@@ -52,10 +57,40 @@ export class FileWatcher {
     context.subscriptions.push({
       dispose: () => {
         this.watcher?.close();
+        this.sessionsWatcher?.close();
         focusListener.dispose();
         this.debounceTimers.forEach(t => clearTimeout(t));
+        clearTimeout(this.sessionsTimer);
       }
     });
+  }
+
+  /**
+   * Each running Claude Code session rewrites ~/.claude/sessions/<pid>.json when
+   * it turns busy, waits on you, or goes idle, often without touching its transcript.
+   */
+  private watchLiveSessions() {
+    const sessionsDir = path.join(this.claudeDir, 'sessions');
+    try {
+      this.sessionsWatcher = fs.watch(sessionsDir, (_event, filename) => {
+        if (!filename || !filename.endsWith('.json')) { return; }
+        clearTimeout(this.sessionsTimer);
+        this.sessionsTimer = setTimeout(() => this.dispatchLiveSessions(), 300);
+      });
+      this.sessionsWatcher.on('error', (err) => {
+        console.error('Claude Code Dashboard sessions watcher error:', err);
+      });
+    } catch {
+      // No sessions/ directory: an older Claude Code, so liveness comes from transcripts and hooks.
+    }
+  }
+
+  private dispatchLiveSessions() {
+    if (vscode.window.state.focused) {
+      this.store.refreshLiveSessions();
+    } else {
+      this.liveSessionsPending = true;
+    }
   }
 
   /**
@@ -75,5 +110,9 @@ export class FileWatcher {
     const files = [...this.pending];
     this.pending.clear();
     for (const filePath of files) { this.store.onFileChanged(filePath); }
+    if (this.liveSessionsPending) {
+      this.liveSessionsPending = false;
+      this.store.refreshLiveSessions();
+    }
   }
 }

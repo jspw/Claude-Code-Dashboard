@@ -1,9 +1,13 @@
+// What a running session is doing, from Claude Code's ~/.claude/sessions files.
+export type LiveStatus = 'busy' | 'waiting' | 'idle';
+
 export interface Project {
   id: string;
   name: string;
   path: string;
   lastActive: number;
   isActive: boolean;
+  liveStatus?: LiveStatus | null;  // its most pressing live session: waiting, then busy, then idle
   sessionCount: number;
   totalTokens: number;
   totalCostUsd: number;
@@ -16,6 +20,8 @@ export interface Session {
   parentSessionId: string | null;
   cwd: string | null;
   isActiveSession: boolean;
+  liveStatus?: LiveStatus | null;
+  waitingFor?: string | null;   // set while waiting, e.g. "permission prompt"
   startTime: number;
   endTime: number | null;
   durationMs: number | null;
@@ -127,6 +133,8 @@ export interface SessionRow {
   promptCount: number;
   toolCallCount: number;
   isActiveSession: boolean;
+  liveStatus?: LiveStatus | null;
+  waitingFor?: string | null;
 }
 
 export interface PatternCount {
