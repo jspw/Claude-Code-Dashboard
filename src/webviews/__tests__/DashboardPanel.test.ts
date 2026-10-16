@@ -104,6 +104,8 @@ describe('DashboardPanel', () => {
     } as unknown as vscode.ExtensionContext;
     DashboardPanel.createOrShow(context, store as unknown as DashboardStore);
     const panel = vi.mocked(vscode.window.createWebviewPanel).mock.results[0].value as WebviewPanelLike;
+    // Kept alive while hidden, so opening a file or project doesn't reset the view.
+    expect(vi.mocked(vscode.window.createWebviewPanel).mock.calls[0][3]).toMatchObject({ retainContextWhenHidden: true });
 
     updatedHandler();
     liveHandler({ type: 'tool_use', timestamp: 1 });

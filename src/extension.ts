@@ -11,6 +11,7 @@ import { DashboardPanel } from './webviews/DashboardPanel';
 import { ProjectPanel } from './webviews/ProjectPanel';
 import { AlertManager } from './alerts/AlertManager';
 import { shareContext } from './share/shareContext';
+import { FileHistoryContentProvider, HISTORY_SCHEME } from './history/sessionDiff';
 import type { ShareScope } from './share/types';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
@@ -36,6 +37,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register commands
   context.subscriptions.push(
     sidebarDisposable,
+    vscode.workspace.registerTextDocumentContentProvider(HISTORY_SCHEME, new FileHistoryContentProvider(CLAUDE_DIR)),
     vscode.commands.registerCommand('claudeDashboard.openDashboard', () => {
       sidebarProvider.clearSelectedProject();
       DashboardPanel.createOrShow(context, store);

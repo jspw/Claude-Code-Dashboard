@@ -1,10 +1,19 @@
 import * as vscode from 'vscode';
 import { DashboardStore, Session } from '../store/DashboardStore';
 import { getWebviewContent } from './getWebviewContent';
+import { openSessionDiff } from '../history/sessionDiff';
 
 // Turns load on demand, and the digest and source path are backend-only.
 function toWireSession({ digest: _digest, sourceFile: _sourceFile, ...session }: Session) {
   return { ...session, turns: [] };
+}
+
+async function openFile(filePath: string) {
+  try {
+    await vscode.window.showTextDocument(vscode.Uri.file(filePath), { preview: true });
+  } catch {
+    vscode.window.showWarningMessage(`Could not open ${filePath} (it may have been moved or deleted).`);
+  }
 }
 
 export class ProjectPanel {
@@ -27,7 +36,13 @@ export class ProjectPanel {
       `claudeProject.${projectId}`,
       title,
       vscode.ViewColumn.One,
-      { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'webview-ui', 'dist')] }
+      {
+        enableScripts: true,
+        // Opening a file or diff hides this panel; without this, coming back
+        // reloads it from scratch and loses the open tab, session and scroll.
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'webview-ui', 'dist')],
+      }
     );
     ProjectPanel.panels.set(projectId, new ProjectPanel(panel, context, store, projectId, sessionId));
   }
@@ -70,10 +85,15 @@ export class ProjectPanel {
         });
       }
       if (msg.type === 'openFile' && msg.path) {
-        try {
-          await vscode.window.showTextDocument(vscode.Uri.file(msg.path), { preview: true });
-        } catch {
-          vscode.window.showWarningMessage(`Could not open ${msg.path} (it may have been moved or deleted).`);
+        await openFile(msg.path);
+      }
+      if (msg.type === 'openSessionDiff' && msg.sessionId && msg.path) {
+        const found = store.getFileBaseline(projectId, msg.sessionId, msg.path);
+        // With nothing to compare against, the file itself is the next best thing.
+        if (found) {
+          await openSessionDiff(msg.path, found.baseline, found.endTime);
+        } else {
+          await openFile(msg.path);
         }
       }
       if (msg.type === 'openFolder' && msg.path) {

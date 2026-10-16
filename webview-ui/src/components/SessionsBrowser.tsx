@@ -3,6 +3,7 @@ import { SessionRow, PromptSearchResult } from '../types';
 import { vscode } from '../vscode';
 import { formatTokens, formatCost, formatDuration, timeAgo } from '../utils/format';
 import { modelLabel, modelBadgeColor } from './SessionDetail';
+import LiveDot from './LiveDot';
 
 type SortKey = 'recent' | 'cost' | 'tokens';
 type ModelFilter = 'all' | 'opus' | 'sonnet' | 'haiku' | 'fable';
@@ -192,7 +193,7 @@ function SessionRowItem({ row, onOpen }: { row: SessionRow; onOpen: (projectId: 
       className="w-full text-left rounded-lg border border-transparent px-3 py-2.5 hover:bg-[var(--vscode-list-hoverBackground)] hover:border-[var(--vscode-panel-border)] transition-colors"
     >
       <div className="flex items-center gap-2 min-w-0">
-        {row.isActiveSession && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />}
+        {row.isActiveSession && <LiveDot status={row.liveStatus} waitingFor={row.waitingFor} />}
         <span className="text-sm truncate flex-1 min-w-0">
           {row.summary || <span className="opacity-40 italic">Untitled session</span>}
         </span>

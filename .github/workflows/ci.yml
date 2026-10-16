@@ -31,12 +31,7 @@ jobs:
             package-lock.json
             webview-ui/package-lock.json
 
-      - name: Validate PR title
-        if: github.event_name == 'pull_request'
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: npm run lint:commit-msg -- --message "$PR_TITLE" --source "pull request title"
-
+      # The PR title is checked in pr-title.yml, which also runs when the title is edited.
       - name: Validate PR commit messages
         if: github.event_name == 'pull_request'
         env:

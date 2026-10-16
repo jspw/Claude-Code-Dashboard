@@ -1,0 +1,33 @@
+name: PR title
+
+# Separate from CI so that renaming a PR re-checks only the title: a re-run
+# replays the original event, old title included, so a fixed title needs the
+# `edited` event, which also fires on description edits and shouldn't re-run
+# the full verify. `synchronize` keeps the check on each new head commit.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: npm run lint:commit-msg -- --message "$PR_TITLE" --source "pull request title"

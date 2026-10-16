@@ -3,11 +3,15 @@ import { EventEmitter } from 'events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectPanel } from '../ProjectPanel';
 import { DashboardStore, EfficiencyStats, Project, ProjectConfig, Session } from '../../store/DashboardStore';
+import { openSessionDiff } from '../../history/sessionDiff';
+
+vi.mock('../../history/sessionDiff', () => ({ openSessionDiff: vi.fn() }));
 
 type ProjectMessage =
   | { type: 'exportSessions'; format?: string }
   | { type: 'getSessionTurns'; sessionId: string }
-  | { type: 'shareContext'; scope?: string; sessionId?: string };
+  | { type: 'shareContext'; scope?: string; sessionId?: string }
+  | { type: 'openSessionDiff'; sessionId: string; path: string };
 type ProjectStoreMock = {
   on: ReturnType<typeof vi.fn>;
   off: ReturnType<typeof vi.fn>;
@@ -100,6 +104,8 @@ describe('ProjectPanel', () => {
       'p1',
     );
     const panel = vi.mocked(vscode.window.createWebviewPanel).mock.results[0].value as WebviewPanelLike;
+    // Kept alive while hidden, so opening a file or diff doesn't reset the view.
+    expect(vi.mocked(vscode.window.createWebviewPanel).mock.calls[0][3]).toMatchObject({ retainContextWhenHidden: true });
 
     updatedHandler();
     await messageHandler({ type: 'exportSessions', format: 'csv' });
@@ -239,6 +245,41 @@ describe('ProjectPanel', () => {
 
     expect(store.getSessionTurns).toHaveBeenCalledWith('p1', 'sub1');
     expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: 'sessionTurns', sessionId: 'sub1', turns: [{ id: 't9' }] });
+  });
+
+  it('opens what a session changed in a file, or the file itself when there is no history', async () => {
+    let messageHandler: (msg: ProjectMessage) => Promise<void> | void = () => {};
+    const baseline = { kind: 'created' } as const;
+    const store = {
+      on: vi.fn(),
+      off: vi.fn(),
+      getProject: vi.fn(() => undefined),
+      getSessions: vi.fn(() => []),
+      getSubagentSessions: vi.fn(() => []),
+      getProjectConfig: vi.fn(() => ({})),
+      getProjectStats: vi.fn(() => ({})),
+      getProjectFiles: vi.fn(() => []),
+      getProjectTodos: vi.fn(() => []),
+      getClaudeCommits: vi.fn(() => []),
+      getFileBaseline: vi.fn((_projectId: string, _sessionId: string, file: string) =>
+        file === '/repo/a.ts' ? { baseline, endTime: 5 } : null),
+    };
+    const panel = {
+      webview: { html: '', postMessage: vi.fn(), onDidReceiveMessage: vi.fn((cb) => { messageHandler = cb; }), asWebviewUri: vi.fn((u) => u), cspSource: 'test' },
+      reveal: vi.fn(),
+      onDidDispose: vi.fn(),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as unknown as vscode.WebviewPanel);
+    const context = { extensionUri: vscode.Uri.file('/ext') } as Pick<vscode.ExtensionContext, 'extensionUri'> as vscode.ExtensionContext;
+
+    ProjectPanel.createOrShow(context, store as unknown as DashboardStore, 'p1');
+    await messageHandler({ type: 'openSessionDiff', sessionId: 's1', path: '/repo/a.ts' });
+    await messageHandler({ type: 'openSessionDiff', sessionId: 's1', path: '/repo/b.ts' });
+
+    expect(store.getFileBaseline).toHaveBeenCalledWith('p1', 's1', '/repo/a.ts');
+    expect(openSessionDiff).toHaveBeenCalledTimes(1);
+    expect(openSessionDiff).toHaveBeenCalledWith('/repo/a.ts', baseline, 5);
+    expect(vscode.window.showTextDocument).toHaveBeenCalledWith(expect.objectContaining({ fsPath: '/repo/b.ts' }), { preview: true });
   });
 
   it('stops listening to the store once the panel is closed', () => {

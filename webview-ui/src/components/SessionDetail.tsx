@@ -194,8 +194,9 @@ function FilesTouched({ session }: { session: Session }) {
           return (
             <button
               key={f}
-              onClick={() => vscode.postMessage({ type: 'openFile', path: f })}
-              title={`Open ${f} (${created ? 'created' : 'edited'})`}
+              // The backend opens the file itself when the session left no history of it.
+              onClick={() => vscode.postMessage({ type: 'openSessionDiff', sessionId: session.id, path: f })}
+              title={`Show what this session changed in ${f} (${created ? 'created' : 'edited'})`}
               className="inline-flex items-center gap-1 text-xs bg-[var(--vscode-editor-inactiveSelectionBackground)] hover:bg-[var(--vscode-list-hoverBackground)] text-[var(--vscode-editor-foreground)] px-2 py-0.5 rounded font-mono max-w-[200px] opacity-90 hover:opacity-100 transition-colors"
             >
               <span className={created ? 'text-green-400' : 'text-yellow-400'} aria-hidden="true">

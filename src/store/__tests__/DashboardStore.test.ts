@@ -488,7 +488,6 @@ describe('DashboardStore', () => {
       const value = String(target);
       return value === '/claude/projects'
         || value === '/claude/projects/demo'
-        || value === '/claude/projects/demo/subagents'
         || value === '/claude/sessions'
         || value === '/cache/project-cache.json'
         || value === '/workspace/demo';
@@ -502,10 +501,21 @@ describe('DashboardStore', () => {
         return ['demo'] as unknown as ReturnType<typeof fs.readdirSync>;
       }
       if (value === '/claude/projects/demo') {
+        // Subagents live in a folder named after their parent session; memory/ has none.
+        if (options && typeof options === 'object' && 'withFileTypes' in (options as Record<string, unknown>)) {
+          return [
+            { name: 'session.jsonl', isDirectory: () => false },
+            { name: 'main-session', isDirectory: () => true },
+            { name: 'memory', isDirectory: () => true },
+          ] as unknown as ReturnType<typeof fs.readdirSync>;
+        }
         return ['session.jsonl', 'notes.txt'] as unknown as ReturnType<typeof fs.readdirSync>;
       }
-      if (value === '/claude/projects/demo/subagents') {
-        return ['child.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>;
+      if (value === '/claude/projects/demo/main-session/subagents') {
+        return ['agent-child.jsonl', 'agent-child.meta.json'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      if (value === '/claude/projects/demo/memory/subagents') {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       }
       if (value === '/claude/sessions') {
         return ['alive.json', 'dead.json', 'bad.json'] as unknown as ReturnType<typeof fs.readdirSync>;
@@ -536,9 +546,6 @@ describe('DashboardStore', () => {
       if (value.endsWith('/bad.json')) {
         return '{bad' as ReturnType<typeof fs.readFileSync>;
       }
-      if (value.endsWith('child.jsonl')) {
-        return `${JSON.stringify({ parentSessionId: 'main-session' })}\n` as ReturnType<typeof fs.readFileSync>;
-      }
       return '' as ReturnType<typeof fs.readFileSync>;
     });
     vi.spyOn(process, 'kill').mockImplementation(((pid: number) => {
@@ -559,7 +566,9 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
     expect(store.getSessions('demo')[0].subagentCostUsd).toBe(0.3);
     expect(store.getSubagentSessions('demo')).toHaveLength(1);
-    expect(fs.unlinkSync).toHaveBeenCalledWith('/claude/sessions/dead.json');
+    expect(store.getSubagentSessions('demo')[0].parentSessionId).toBe('main-session');
+    // Claude Code owns the session files; a dead session's file is left for it to clear.
+    expect(fs.unlinkSync).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(CACHE_SAVE_DELAY_MS);
     expect(fs.promises.mkdir).toHaveBeenCalledWith('/cache', { recursive: true });
     expect(fs.promises.writeFile).toHaveBeenCalled();
@@ -574,7 +583,7 @@ describe('DashboardStore', () => {
             demo: {
               project: makeProject({ id: 'demo', name: 'demo', path: '/workspace/demo', isActive: false }),
               files: { 'session.jsonl': { mtimeMs: NOW - 2000, session: makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false, turns: [] }) } },
-              subagentFiles: { 'child.jsonl': { mtimeMs: NOW, session: makeSession({ id: 'cached-child', projectId: 'demo', turns: [] }) } },
+              subagentFiles: { [path.join('main-session', 'subagents', 'agent-child.jsonl')]: { mtimeMs: NOW, session: makeSession({ id: 'cached-child', projectId: 'demo', turns: [] }) } },
             },
           },
         }) as ReturnType<typeof fs.readFileSync>;
@@ -598,6 +607,94 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
   });
 
+  describe('file baselines', () => {
+    const storeWith = (overrides: Parameters<typeof makeSession>[0]) => {
+      const store = new DashboardStore('/claude');
+      (store as any).sessions.set('p1', [makeSession({ id: 's1', projectId: 'p1', endTime: 42, ...overrides })]);
+      return store;
+    };
+
+    it("finds the backup of a file the session edited, with the session's end time", () => {
+      vi.mocked(fs.existsSync).mockImplementation(p => String(p).startsWith(path.join('/claude', 'file-history', 's1')));
+      const store = storeWith({ filesModified: ['/repo/a.ts'], filesCreated: [] });
+
+      expect(store.getFileBaseline('p1', 's1', '/repo/a.ts')).toEqual({
+        baseline: { kind: 'backup', sessionId: 's1', backupName: expect.stringMatching(/^[0-9a-f]{16}@v1$/) },
+        endTime: 42,
+      });
+    });
+
+    it('starts a created file from nothing, and has no baseline for anything else', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      const store = storeWith({ filesModified: ['/repo/new.ts', '/repo/old.ts'], filesCreated: ['/repo/new.ts'] });
+
+      expect(store.getFileBaseline('p1', 's1', '/repo/new.ts')).toEqual({ baseline: { kind: 'created' }, endTime: 42 });
+      expect(store.getFileBaseline('p1', 's1', '/repo/old.ts')).toBeNull();     // history gone
+      expect(store.getFileBaseline('p1', 's1', '/repo/other.ts')).toBeNull();   // never edited
+      expect(store.getFileBaseline('p1', 'missing', '/repo/new.ts')).toBeNull();
+    });
+  });
+
+  describe('live sessions', () => {
+    const storeWith = (projects: Record<string, string[]>) => {
+      const store = new DashboardStore('/claude');
+      for (const [projectId, ids] of Object.entries(projects)) {
+        store['projects'].set(projectId, makeProject({ id: projectId, isActive: false }));
+        (store as any).sessions.set(projectId, ids.map(id => makeSession({ id, projectId, isActiveSession: false, turns: [] })));
+      }
+      return store;
+    };
+    const reports = (store: DashboardStore, sessions: Record<string, { status: 'busy' | 'waiting' | 'idle' | null; waitingFor?: string }>, available = true) =>
+      vi.spyOn((store as any).liveSessions, 'read').mockReturnValue({
+        available,
+        sessions: new Map(Object.entries(sessions).map(([id, s]) => [id, { status: s.status, waitingFor: s.waitingFor ?? null }])),
+      });
+
+    it("marks what each session is doing, and a project by its most pressing session", () => {
+      const store = storeWith({ p1: ['a', 'b', 'c'], p2: ['d'] });
+      reports(store, { a: { status: 'idle' }, b: { status: 'waiting', waitingFor: 'permission prompt' }, d: { status: 'busy' } });
+      const updated = vi.fn();
+      store.on('updated', updated);
+
+      expect(store.refreshLiveSessions()).toBe(true);
+
+      expect(store.getSessions('p1').map(s => [s.id, s.isActiveSession, s.liveStatus ?? null, s.waitingFor ?? null])).toEqual([
+        ['a', true, 'idle', null],
+        ['b', true, 'waiting', 'permission prompt'],
+        ['c', false, null, null],
+      ]);
+      expect(store.getProject('p1')).toMatchObject({ isActive: true, liveStatus: 'waiting' });
+      expect(store.getProject('p2')).toMatchObject({ isActive: true, liveStatus: 'busy' });
+      vi.runAllTimers();
+      expect(updated).toHaveBeenCalledOnce();
+    });
+
+    it('stays quiet when nothing changed, and reports when there are no session files', () => {
+      const store = storeWith({ p1: ['a'] });
+      const read = reports(store, { a: { status: 'busy' } });
+      store.refreshLiveSessions();
+      vi.runAllTimers();
+      const updated = vi.fn();
+      store.on('updated', updated);
+
+      store.refreshLiveSessions();
+      vi.runAllTimers();
+      expect(updated).not.toHaveBeenCalled();
+
+      read.mockReturnValue({ available: false, sessions: new Map() });
+      expect(store.refreshLiveSessions()).toBe(false);
+    });
+
+    it('keeps a session open when its turn ends, if Claude Code still lists it', () => {
+      const store = storeWith({ p1: ['a'] });
+      reports(store, { a: { status: 'idle' } });
+
+      store.handleLiveEvent({ type: 'session_stop', sessionId: 'a', timestamp: 1 });
+
+      expect(store.getSessions('p1')[0]).toMatchObject({ isActiveSession: true, liveStatus: 'idle' });
+    });
+  });
+
   describe('turns on demand', () => {
     const FILE = '/claude/projects/p1/s1.jsonl';
     const storeWith = (session = makeSession({ id: 's1', projectId: 'p1', turns: [], sourceFile: FILE })) => {
@@ -613,7 +710,7 @@ describe('DashboardStore', () => {
       vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
       vi.spyOn((store as any).sessionParser, 'parseFile').mockReturnValue(makeSession({ id: 's1', turns: [makeTurn()] }));
 
-      await (store as any).loadProject('p1', '/claude/projects/p1', { ids: new Set(), available: true });
+      await (store as any).loadProject('p1', '/claude/projects/p1', { sessions: new Map(), available: true });
 
       const [session] = store.getSessions('p1');
       expect(session.turns).toEqual([]);
@@ -670,7 +767,7 @@ describe('DashboardStore', () => {
       vi.mocked(fs.statSync).mockImplementation(p => ({ mtimeMs: mtimes[path.basename(String(p))], size: 10 }) as fs.Stats);
       const parseFile = vi.spyOn((store as any).sessionParser, 'parseFile')
         .mockImplementation((file: unknown) => makeSession({ id: path.basename(String(file), '.jsonl') }));
-      const live = { ids: new Set<string>(), available: true };
+      const live = { sessions: new Map(), available: true };
 
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
       mtimes['b.jsonl'] = 2;
@@ -683,14 +780,16 @@ describe('DashboardStore', () => {
 
     it('does not double-count subagent cost when a cached session is reused', async () => {
       const store = new DashboardStore('/claude');
-      vi.mocked(fs.existsSync).mockImplementation(p => String(p).endsWith('/subagents'));
-      vi.mocked(fs.readdirSync).mockImplementation(p =>
-        (String(p).endsWith('/subagents') ? ['child.jsonl'] : ['main.jsonl']) as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.readdirSync).mockImplementation(((p: unknown, options?: unknown) => {
+        if (String(p).endsWith('/main/subagents')) { return ['agent-child.jsonl']; }
+        if (options) { return [{ name: 'main', isDirectory: () => true }]; }
+        return ['main.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
       vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
       vi.mocked(fs.readFileSync).mockReturnValue('' as ReturnType<typeof fs.readFileSync>);
       vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation((file: unknown) =>
-        String(file).endsWith('child.jsonl') ? makeSession({ id: 'child', costUsd: 0.3 }) : makeSession({ id: 'main', costUsd: 1 }));
-      const live = { ids: new Set<string>(), available: true };
+        String(file).endsWith('agent-child.jsonl') ? makeSession({ id: 'agent-child', costUsd: 0.3 }) : makeSession({ id: 'main', costUsd: 1 }));
+      const live = { sessions: new Map(), available: true };
 
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
@@ -706,7 +805,7 @@ describe('DashboardStore', () => {
       vi.spyOn((store as any).sessionParser, 'parseFile')
         .mockReturnValueOnce(makeSession({ id: 'a', isActiveSession: true, endTime: null, durationMs: null }))
         .mockReturnValueOnce(makeSession({ id: 'a', isActiveSession: false, endTime: 5, durationMs: 60_000 }));
-      const live = { ids: new Set<string>(), available: false };
+      const live = { sessions: new Map(), available: false };
 
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
@@ -722,7 +821,7 @@ describe('DashboardStore', () => {
       vi.mocked(fs.statSync).mockImplementation(() => ({ mtimeMs: mtime, size: 10 }) as fs.Stats);
       vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation(() =>
         makeSession({ id: 's1', sourceFile: '/claude/projects/p1/s1.jsonl', turns: [makeTurn({ id: `v${mtime}` })] }));
-      const live = { ids: new Set<string>(), available: true };
+      const live = { sessions: new Map(), available: true };
 
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
       expect(store.getSessionTurns('p1', 's1').map(t => t.id)).toEqual(['v1']);
