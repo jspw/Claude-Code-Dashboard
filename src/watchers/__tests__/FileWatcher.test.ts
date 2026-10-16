@@ -46,25 +46,23 @@ describe('FileWatcher', () => {
     const close = vi.fn();
     const context = { subscriptions: [] as vscode.Disposable[] };
 
+    const closeSessions = vi.fn();
+    let projectWatches = 0;
     vi.mocked(fs.existsSync).mockReturnValueOnce(false).mockReturnValueOnce(true).mockReturnValueOnce(true);
-    vi.mocked(fs.watch)
-      .mockImplementationOnce(() => {
+    vi.mocked(fs.watch).mockImplementation(((target: unknown, ...args: unknown[]) => {
+      if (String(target).endsWith('sessions')) {
+        return { close: closeSessions, on: vi.fn() } as unknown as fs.FSWatcher;
+      }
+      projectWatches++;
+      if (projectWatches === 1) {
         throw new Error('watch failed');
-      })
-      .mockImplementationOnce((...args: unknown[]) => {
-        const cb = args[2];
-        if (typeof cb === 'function') {
-          cb('change', 'proj/a.jsonl');
-        }
-        return { close, on: vi.fn() } as unknown as fs.FSWatcher;
-      })
-      .mockImplementationOnce((...args: unknown[]) => {
-        const cb = args[2];
-        if (typeof cb === 'function') {
-          cb('change', 'proj/a.jsonl');
-        }
-        return { close, on: vi.fn() } as unknown as fs.FSWatcher;
-      });
+      }
+      const cb = args[1];
+      if (typeof cb === 'function') {
+        cb('change', 'proj/a.jsonl');
+      }
+      return { close, on: vi.fn() } as unknown as fs.FSWatcher;
+    }) as typeof fs.watch);
 
     new FileWatcher('/claude', { onFileChanged } as unknown as ConstructorParameters<typeof FileWatcher>[1])
       .start(context as unknown as vscode.ExtensionContext);
@@ -79,6 +77,7 @@ describe('FileWatcher', () => {
 
     expect(errorSpy).toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
+    expect(closeSessions).toHaveBeenCalledTimes(2);
     errorSpy.mockRestore();
   });
 
@@ -87,7 +86,7 @@ describe('FileWatcher', () => {
     let fire: ((event: string, name: string) => void) | undefined;
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.watch).mockImplementation(((...args: unknown[]) => {
-      fire = args[2] as typeof fire;
+      if (String(args[0]).endsWith('projects')) { fire = args[2] as typeof fire; }
       return { close: vi.fn(), on: vi.fn() } as unknown as fs.FSWatcher;
     }) as typeof fs.watch);
     let onWindowState: ((state: { focused: boolean }) => void) | undefined;
@@ -114,5 +113,39 @@ describe('FileWatcher', () => {
     fire!('change', 'proj/c.jsonl');
     vi.advanceTimersByTime(300);
     expect(onFileChanged).toHaveBeenCalledTimes(3);
+  });
+
+  it('refreshes live sessions when a session file changes, once per burst and only when focused', () => {
+    const refreshLiveSessions = vi.fn();
+    let fireSessions: ((event: string, name: string) => void) | undefined;
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.watch).mockImplementation(((...args: unknown[]) => {
+      if (String(args[0]).endsWith('sessions')) { fireSessions = args[1] as typeof fireSessions; }
+      return { close: vi.fn(), on: vi.fn() } as unknown as fs.FSWatcher;
+    }) as typeof fs.watch);
+    let onWindowState: ((state: { focused: boolean }) => void) | undefined;
+    vi.mocked(window.onDidChangeWindowState).mockImplementation(listener => {
+      onWindowState = listener as typeof onWindowState;
+      return { dispose: vi.fn() };
+    });
+    const state = window.state as { focused: boolean };
+    state.focused = true;
+
+    new FileWatcher('/claude', { onFileChanged: vi.fn(), refreshLiveSessions } as unknown as ConstructorParameters<typeof FileWatcher>[1])
+      .start({ subscriptions: [] } as unknown as vscode.ExtensionContext);
+    fireSessions!('rename', '123.json');
+    fireSessions!('change', '123.json');
+    fireSessions!('change', '123.0f3a.key');
+    vi.advanceTimersByTime(300);
+    expect(refreshLiveSessions).toHaveBeenCalledOnce();
+
+    state.focused = false;
+    fireSessions!('change', '456.json');
+    vi.advanceTimersByTime(300);
+    expect(refreshLiveSessions).toHaveBeenCalledOnce();
+
+    state.focused = true;
+    onWindowState!({ focused: true });
+    expect(refreshLiveSessions).toHaveBeenCalledTimes(2);
   });
 });

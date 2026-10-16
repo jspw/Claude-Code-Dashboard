@@ -2,6 +2,7 @@ import React from 'react';
 import { vscode } from '../vscode';
 import { Project, DashboardStats } from '../types';
 import { formatTokens, formatCost, timeAgo } from '../utils/format';
+import LiveDot, { liveLabel } from '../components/LiveDot';
 
 // Kept as named exports for backwards compatibility; both delegate to utils/format.
 export const sidebarTimeAgo = timeAgo;
@@ -86,7 +87,7 @@ function ProjectRow({ project: p, selected }: { project: Project; selected: bool
       }`}
     >
       {p.isActive ? (
-        <span className="w-[7px] h-[7px] rounded-full bg-green-400 animate-pulse shrink-0" />
+        <LiveDot status={p.liveStatus} className="w-[7px] h-[7px]" />
       ) : (
         <span className="w-[7px] h-[7px] rounded-full border border-current opacity-30 shrink-0" />
       )}
@@ -98,7 +99,7 @@ function ProjectRow({ project: p, selected }: { project: Project; selected: bool
       >
         <div className="truncate">{p.name}</div>
         <div className="text-[11px] opacity-45 truncate">
-          {p.isActive ? 'live now' : timeAgo(p.lastActive)} · {formatTokens(p.totalTokens)} · {formatCost(p.totalCostUsd)}
+          {p.isActive ? liveLabel(p.liveStatus) ?? 'live now' : timeAgo(p.lastActive)} · {formatTokens(p.totalTokens)} · {formatCost(p.totalCostUsd)}
         </div>
       </button>
       <button
