@@ -30,6 +30,7 @@ vi.mock('recharts', () => ({
   Area: () => null,
   AreaChart: ({ children }: WithChildren) => React.createElement('div', { 'data-testid': 'area-chart' }, children),
   Cell: () => null,
+  ReferenceLine: () => null,
   PieChart: ({ children }: WithChildren) => React.createElement('div', { 'data-testid': 'pie-chart' }, children),
   Pie: () => null,
 }));

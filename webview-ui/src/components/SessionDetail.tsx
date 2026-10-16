@@ -5,6 +5,7 @@ import { isPromptTurn } from './conversation/ConversationTurn';
 import { UserMessageCard } from './conversation/UserMessageCard';
 import { ResponseGroup } from './conversation/ResponseGroup';
 import ShareContextButton from './ShareContextButton';
+import ContextTimeline from './ContextTimeline';
 import { vscode } from '../vscode';
 import { shortestUniqueLabels } from '../utils/fileLabels';
 
@@ -308,9 +309,12 @@ export default function SessionDetail({ session, turns, loading, failed = false,
       ) : turns.length === 0 ? (
         <div className="text-xs opacity-40 text-center py-8">No turns recorded for this session.</div>
       ) : (
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          {conversationBlocks(turns, session.cwd, repliesOnly)}
-        </div>
+        <>
+          <ContextTimeline turns={turns} />
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            {conversationBlocks(turns, session.cwd, repliesOnly)}
+          </div>
+        </>
       )}
     </div>
   );

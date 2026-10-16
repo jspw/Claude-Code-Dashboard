@@ -7,7 +7,7 @@ import { ResponseGroup } from './ResponseGroup';
 // A real user prompt (typed or attachments-only) — everything else, including
 // system-injected "user" turns, belongs on the response timeline.
 export function isPromptTurn(turn: Turn): boolean {
-  if (turn.role !== 'user') { return false; }
+  if (turn.role !== 'user' || turn.isCompactSummary) { return false; }
   const content = turn.content?.trim() ?? '';
   if (!content) { return (turn.attachments?.length ?? 0) > 0; }
   return parseSystemContent(content) === null;

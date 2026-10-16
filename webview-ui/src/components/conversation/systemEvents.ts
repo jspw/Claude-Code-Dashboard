@@ -1,10 +1,12 @@
 // Parsing of system-injected "user" messages (slash commands, stdout echoes,
-// skill instruction payloads) so they render as context rows, not prompts.
+// skill instruction payloads, compaction summaries) so they render as context
+// rows, not prompts.
 
 export type SystemEvent =
   | { kind: 'command'; name: string; args?: string }
   | { kind: 'stdout'; text: string }
-  | { kind: 'skill'; name: string; body: string };
+  | { kind: 'skill'; name: string; body: string }
+  | { kind: 'compaction'; body: string };   // Claude Code's summary of the conversation it compacted away
 
 // Loading a skill injects its full instructions as a "user" message that begins
 // with this marker. These can be hundreds of KB — surface them as collapsed
