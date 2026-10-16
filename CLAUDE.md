@@ -83,6 +83,8 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 | `hooks/HookManager.ts` | Injects/removes PostToolUse+Stop hooks in `~/.claude/settings.json` (with user consent). Hooks are armed by a `~/.claude/.dashboard-live` marker and no-op without it |
 | `hooks/stripDashboardHooks.ts` | Pure helper that strips dashboard hook entries from a parsed settings object (shared with uninstall) |
 | `uninstall.ts` | `vscode:uninstall` script — removes hooks, marker, and event file after uninstall |
+| `history/fileHistory.ts` | Locates a session's `~/.claude/file-history/<sessionId>/<sha256(path)[:16]>@v1` backup (the file before the session's first edit; none = created) |
+| `history/sessionDiff.ts` | `claude-history:` read-only content provider for backups + `openSessionDiff()` (VS Code diff: before session ↔ now) |
 | `alerts/AlertManager.ts` | Budget alerts (80%/100%) and weekly Monday digest |
 | `webviews/DashboardPanel.ts` | Singleton webview for main dashboard. `buildState()` assembles all analytics |
 | `webviews/ProjectPanel.ts` | Per-project webview (`Map<projectId, panel>`). Strips turns from sessions (loaded on demand via `getSessionTurns` message) |
@@ -146,6 +148,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 - `{ type: 'exportSessions', format: 'json' | 'csv' }`
 - `{ type: 'setBudget' }` — opens the budget input box; `{ type: 'dismissTour' }`; `{ type: 'refresh' }`
 - `{ type: 'openFile', path }` / `{ type: 'openFolder', path }` — every rendered file/folder is a door
+- `{ type: 'openSessionDiff', sessionId, path }` — diff of what that session changed in the file; opens the file itself when no history exists
 
 ### State Management
 
@@ -204,5 +207,4 @@ These Claude Code features are **not captured or displayed** by the dashboard:
 - **Plans** — Implementation plans created during sessions (conversational, no persistent data)
 - **Scheduled triggers** — cron-based remote agents (no local data source)
 - **Worktrees** — isolated git worktrees created by subagents (visible in Tools tab as tool calls)
-- **Session diff viewer** — `~/.claude/file-history/` before/after file changes
 - **Prompt library** — starred/saved prompts and pattern detection

@@ -25,7 +25,13 @@ export class DashboardPanel {
       'claudeDashboard',
       'Claude Code Dashboard',
       vscode.ViewColumn.One,
-      { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'webview-ui', 'dist')] }
+      {
+        enableScripts: true,
+        // Opening a file or project hides this panel; without this, coming back
+        // reloads it from scratch and loses the open tab, filters and scroll.
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'webview-ui', 'dist')],
+      }
     );
     DashboardPanel.currentPanel = new DashboardPanel(panel, context, store);
   }

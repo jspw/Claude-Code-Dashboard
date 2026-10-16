@@ -598,6 +598,34 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
   });
 
+  describe('file baselines', () => {
+    const storeWith = (overrides: Parameters<typeof makeSession>[0]) => {
+      const store = new DashboardStore('/claude');
+      (store as any).sessions.set('p1', [makeSession({ id: 's1', projectId: 'p1', endTime: 42, ...overrides })]);
+      return store;
+    };
+
+    it("finds the backup of a file the session edited, with the session's end time", () => {
+      vi.mocked(fs.existsSync).mockImplementation(p => String(p).startsWith(path.join('/claude', 'file-history', 's1')));
+      const store = storeWith({ filesModified: ['/repo/a.ts'], filesCreated: [] });
+
+      expect(store.getFileBaseline('p1', 's1', '/repo/a.ts')).toEqual({
+        baseline: { kind: 'backup', sessionId: 's1', backupName: expect.stringMatching(/^[0-9a-f]{16}@v1$/) },
+        endTime: 42,
+      });
+    });
+
+    it('starts a created file from nothing, and has no baseline for anything else', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      const store = storeWith({ filesModified: ['/repo/new.ts', '/repo/old.ts'], filesCreated: ['/repo/new.ts'] });
+
+      expect(store.getFileBaseline('p1', 's1', '/repo/new.ts')).toEqual({ baseline: { kind: 'created' }, endTime: 42 });
+      expect(store.getFileBaseline('p1', 's1', '/repo/old.ts')).toBeNull();     // history gone
+      expect(store.getFileBaseline('p1', 's1', '/repo/other.ts')).toBeNull();   // never edited
+      expect(store.getFileBaseline('p1', 'missing', '/repo/new.ts')).toBeNull();
+    });
+  });
+
   describe('turns on demand', () => {
     const FILE = '/claude/projects/p1/s1.jsonl';
     const storeWith = (session = makeSession({ id: 's1', projectId: 'p1', turns: [], sourceFile: FILE })) => {

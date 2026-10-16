@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import { SessionParser } from '../parsers/SessionParser';
 import { SettingsParser } from '../parsers/SettingsParser';
 import type { SessionDigest } from '../parsers/sessionDigest';
+import { findBaseline, FileBaseline } from '../history/fileHistory';
 
 export interface ToolUsageStat {
   tool: string;
@@ -1015,8 +1016,7 @@ export class DashboardStore extends EventEmitter {
    * and forth doesn't re-parse a large file.
    */
   getSessionTurns(projectId: string, sessionId: string): Turn[] {
-    const session = (this.sessions.get(projectId) ?? []).find(s => s.id === sessionId)
-      ?? (this.subagentSessions.get(projectId) ?? []).find(s => s.id === sessionId);
+    const session = this.findSession(projectId, sessionId);
     if (!session?.sourceFile) { return []; }
 
     const file = session.sourceFile;
@@ -1033,6 +1033,23 @@ export class DashboardStore extends EventEmitter {
       this.turnCache.delete(this.turnCache.keys().next().value as string);
     }
     return turns;
+  }
+
+  /**
+   * A file the session edited, as it was before the session touched it, plus
+   * when the session ended. Null when the session didn't edit it or left no
+   * history of it.
+   */
+  getFileBaseline(projectId: string, sessionId: string, filePath: string): { baseline: FileBaseline; endTime: number | null } | null {
+    const session = this.findSession(projectId, sessionId);
+    if (!session?.filesModified.includes(filePath)) { return null; }
+    const baseline = findBaseline(this.claudeDir, session.id, filePath, session.filesCreated.includes(filePath));
+    return baseline ? { baseline, endTime: session.endTime } : null;
+  }
+
+  private findSession(projectId: string, sessionId: string): Session | undefined {
+    return (this.sessions.get(projectId) ?? []).find(s => s.id === sessionId)
+      ?? (this.subagentSessions.get(projectId) ?? []).find(s => s.id === sessionId);
   }
 
   async onFileChanged(filePath: string) {

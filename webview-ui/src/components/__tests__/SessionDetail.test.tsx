@@ -295,11 +295,13 @@ describe('SessionDetail — files touched', () => {
     expect(screen.queryByText('file-19.ts')).not.toBeInTheDocument();
   });
 
-  it('opens a file when its chip is clicked', () => {
-    renderWithFiles(['/repo/src/a.ts']);
+  it('opens what the session changed in a file when its chip is clicked', () => {
+    render(
+      <SessionDetail session={makeSession({ id: 's1', filesModified: ['/repo/src/a.ts'], filesCreated: [], turns: [] })} turns={[]} loading={false} />
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'openFile', path: '/repo/src/a.ts' });
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'openSessionDiff', sessionId: 's1', path: '/repo/src/a.ts' });
   });
 
   it('tells same-named files apart by their folder', () => {

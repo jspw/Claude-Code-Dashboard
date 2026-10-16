@@ -9,6 +9,7 @@ export const workspace = {
   })),
   onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
   openTextDocument: vi.fn((options: unknown) => Promise.resolve(options)),
+  registerTextDocumentContentProvider: vi.fn(() => ({ dispose: vi.fn() })),
   fs: {
     writeFile: vi.fn(),
     createDirectory: vi.fn(),
@@ -66,8 +67,17 @@ export const env = {
   },
 };
 
+type MockUriFields = { fsPath: string; scheme: string; path: string; query?: string };
+
+// `with` is non-enumerable so equality checks against plain { fsPath, ... } objects still pass.
+function mockUri(fields: MockUriFields): MockUriFields {
+  return Object.defineProperty(fields, 'with', {
+    value: (change: { scheme?: string; query?: string }) => mockUri({ ...fields, ...change }),
+  });
+}
+
 export const Uri = {
-  file: vi.fn((p: string) => ({ fsPath: p, scheme: 'file', path: p })),
+  file: vi.fn((p: string) => mockUri({ fsPath: p, scheme: 'file', path: p })),
   joinPath: vi.fn((_base: unknown, ...segments: string[]) => ({
     fsPath: segments.join('/'),
     scheme: 'file',
