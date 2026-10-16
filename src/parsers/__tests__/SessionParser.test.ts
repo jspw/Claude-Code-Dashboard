@@ -350,6 +350,39 @@ describe('SessionParser', () => {
     expect(parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, 'some-future-model')).toBe(18);
   });
 
+  it('prices the 5.x models at their published rates, cache reads included', () => {
+    const inOut = (model: string) => parser.estimateCostDetailed(1_000_000, 1_000_000, 0, 0, model);
+    const read = (model: string) => parser.estimateCostDetailed(0, 0, 0, 1_000_000, model);
+
+    expect([inOut('claude-opus-5-5'), read('claude-opus-5-5')]).toEqual([24, 0.2]);
+    expect([inOut('claude-opus-5'), read('claude-opus-5')]).toEqual([30, 0.5]);
+    expect([inOut('claude-sonnet-5-5'), read('claude-sonnet-5-5')]).toEqual([12, 0.1]);
+    expect([inOut('claude-sonnet-5'), read('claude-sonnet-5')]).toEqual([12, 0.2]);
+    expect([inOut('claude-fable-5-1'), read('claude-fable-5-1')]).toEqual([60, 0.25]);
+    expect([inOut('claude-mythos-5-1'), read('claude-mythos-5-1')]).toEqual([60, 0.25]);
+    expect(read('claude-fable-5')).toBe(1);
+    expect(parser.estimateCostDetailed(50_000, 50_000, 0, 0, 'claude-haiku-5-5')).toBeCloseTo(0.03, 12);
+  });
+
+  it('bills 1-hour cache writes at 2x input and 5-minute writes at 1.25x', () => {
+    expect(parser.estimateCostDetailed(0, 0, 1_000_000, 0, 'claude-opus-5-5')).toBe(5);
+    expect(parser.estimateCostDetailed(0, 0, 1_000_000, 0, 'claude-opus-5-5', 1_000_000)).toBe(8);
+    expect(parser.estimateCostDetailed(0, 0, 1_000_000, 0, 'claude-opus-5-5', 250_000)).toBeCloseTo(5.75, 10);
+  });
+
+  it('matches what Claude Code itself recorded for an Opus 5.5 session', () => {
+    // Totals from that session's cost-state entry: all cache writes went to the 1-hour cache.
+    expect(parser.estimateCostDetailed(18, 4_919, 42_719, 526_409, 'claude-opus-5-5', 42_719)).toBeCloseTo(0.5454858, 10);
+  });
+
+  it('prices a Haiku 5.5 request over 100k prompt tokens at the long-prompt rates', () => {
+    // Prompt length counts cache reads and writes; the whole request moves to the higher rates.
+    const short = parser.estimateCostDetailed(40_000, 1_000, 0, 50_000, 'claude-haiku-5-5');
+    const long = parser.estimateCostDetailed(40_000, 1_000, 0, 70_000, 'claude-haiku-5-5');
+    expect(short).toBeCloseTo((40_000 * 0.1 + 1_000 * 0.5 + 50_000 * 0.01) / 1_000_000, 12);
+    expect(long).toBeCloseTo((40_000 * 0.5 + 1_000 * 2.5 + 70_000 * 0.05) / 1_000_000, 12);
+  });
+
   it('stores the raw model ID and flags fallback pricing confidence', () => {
     const fableSession = [
       JSON.stringify({ type: 'user', uuid: 'u1', timestamp: '2025-01-15T10:00:00Z', cwd: '/test', message: { content: 'Q' } }),
@@ -375,5 +408,118 @@ describe('SessionParser', () => {
     expect(unknownResult?.pricingConfidence).toBe('fallback');
     expect(noModelResult?.model).toBeNull();
     expect(noModelResult?.pricingConfidence).toBe('fallback');
+  });
+
+  describe('per-call usage', () => {
+    const user = (uuid: string, time: string, content = 'Q') =>
+      JSON.stringify({ type: 'user', uuid, timestamp: `2025-01-15T${time}Z`, cwd: '/test', message: { content } });
+    const block = (uuid: string, time: string, msgId: string, content: unknown, usage: Record<string, number>, model = 'claude-sonnet-4') =>
+      JSON.stringify({ type: 'assistant', uuid, timestamp: `2025-01-15T${time}Z`, requestId: `req_${msgId}`,
+        message: { id: msgId, model, content: [content], usage } });
+
+    it('counts each API response once when Claude Code splits it across entries', () => {
+      // One response, written as three entries that each repeat the full usage.
+      const usage = { input_tokens: 2, cache_creation_input_tokens: 1000, cache_read_input_tokens: 5000, output_tokens: 300 };
+      vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+        user('u1', '10:00:00'),
+        block('a1', '10:00:01', 'msg_1', { type: 'thinking', thinking: 'plan' }, usage),
+        block('a2', '10:00:02', 'msg_1', { type: 'text', text: 'Reading it' }, usage),
+        block('a3', '10:00:03', 'msg_1', { type: 'tool_use', id: 't1', name: 'Read', input: {} }, usage),
+      ].join('\n')));
+
+      const result = parser.parseFile('/sessions/split.jsonl', 'proj-1')!;
+
+      expect(result.inputTokens).toBe(2);
+      expect(result.cacheCreationTokens).toBe(1000);
+      expect(result.cacheReadTokens).toBe(5000);
+      expect(result.outputTokens).toBe(300);
+      expect(result.costUsd).toBeCloseTo(parser.estimateCostDetailed(2, 300, 1000, 5000, 'claude-sonnet-4'), 10);
+      expect(result.turns.map(t => t.usage !== undefined)).toEqual([false, true, false, false]);
+      expect(result.turns.slice(2).map(t => [t.inputTokens, t.outputTokens])).toEqual([[0, 0], [0, 0]]);
+    });
+
+    it('keeps each call\'s usage and cost on its turn, priced at that call\'s model', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+        user('u1', '10:00:00'),
+        block('a1', '10:00:05', 'msg_1', { type: 'text', text: 'A' },
+          { input_tokens: 10, cache_creation_input_tokens: 20000, cache_read_input_tokens: 0, output_tokens: 100 }),
+        user('u2', '10:01:00', '/model opus'),
+        block('a2', '10:01:05', 'msg_2', { type: 'text', text: 'B' },
+          { input_tokens: 5, cache_creation_input_tokens: 400, cache_read_input_tokens: 20000, output_tokens: 50 }, 'claude-opus-4-8'),
+      ].join('\n')));
+
+      const result = parser.parseFile('/sessions/calls.jsonl', 'proj-1')!;
+      const first = parser.estimateCostDetailed(10, 100, 20000, 0, 'claude-sonnet-4');
+      const second = parser.estimateCostDetailed(5, 50, 400, 20000, 'claude-opus-4-8');
+
+      expect(result.turns[1].usage).toEqual({
+        input: 10, cacheWrite: 20000, cacheWrite1h: 0, cacheRead: 0, output: 100, costUsd: first, model: 'claude-sonnet-4',
+      });
+      expect(result.turns[3].usage).toEqual({
+        input: 5, cacheWrite: 400, cacheWrite1h: 0, cacheRead: 20000, output: 50, costUsd: second, model: 'claude-opus-4-8',
+      });
+      expect(result.costUsd).toBeCloseTo(first + second, 10);
+    });
+
+    it('prices cache writes by the cache they went to', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+        user('u1', '10:00:00'),
+        JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2025-01-15T10:00:05Z', requestId: 'req_1',
+          message: { id: 'msg_1', model: 'claude-opus-5-5', content: [{ type: 'text', text: 'A' }],
+            usage: { input_tokens: 2, cache_creation_input_tokens: 30_000, cache_read_input_tokens: 0, output_tokens: 100,
+              cache_creation: { ephemeral_1h_input_tokens: 30_000, ephemeral_5m_input_tokens: 0 } } } }),
+      ].join('\n')));
+
+      const result = parser.parseFile('/sessions/ttl.jsonl', 'proj-1')!;
+
+      expect(result.turns[1].usage).toMatchObject({ cacheWrite: 30_000, cacheWrite1h: 30_000 });
+      expect(result.costUsd).toBeCloseTo(parser.estimateCostDetailed(2, 100, 30_000, 0, 'claude-opus-5-5', 30_000), 12);
+    });
+
+    it('marks a compaction summary as injected context, not a prompt', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+        JSON.stringify({ type: 'user', uuid: 'u1', timestamp: '2025-01-15T10:00:00Z', cwd: '/test', isCompactSummary: true,
+          isVisibleInTranscriptOnly: true, message: { content: 'This session is being continued from a previous conversation.' } }),
+        user('u2', '10:01:00', 'Keep going'),
+      ].join('\n')));
+
+      const result = parser.parseFile('/sessions/summary.jsonl', 'proj-1')!;
+
+      expect(result.turns[0]).toMatchObject({ isCompactSummary: true, isMeta: true });
+      expect(result.turns[1].isCompactSummary).toBeUndefined();
+      expect(result.sessionSummary).toBe('Keep going');
+    });
+
+    it('flags the first call after a compaction boundary', () => {
+      const usage = { input_tokens: 10, cache_creation_input_tokens: 100, cache_read_input_tokens: 0, output_tokens: 10 };
+      vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+        user('u1', '10:00:00'),
+        block('a1', '10:00:05', 'msg_1', { type: 'text', text: 'A' }, usage),
+        JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: '2025-01-15T10:05:00Z', compactMetadata: { trigger: 'auto', preTokens: 150000 } }),
+        user('u2', '10:05:01'),
+        block('a2', '10:05:05', 'msg_2', { type: 'text', text: 'B' }, usage),
+        block('a3', '10:06:05', 'msg_3', { type: 'text', text: 'C' }, usage),
+      ].join('\n')));
+
+      const turns = parser.parseFile('/sessions/compact.jsonl', 'proj-1')!.turns;
+
+      expect(turns.filter(t => t.usage).map(t => t.usage!.compacted ?? false)).toEqual([false, true, false]);
+    });
+
+    it('leaves synthetic responses out of the model and the per-call usage', () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(asReadResult([
+        user('u1', '10:00:00'),
+        block('a1', '10:00:05', 'msg_1', { type: 'text', text: 'A' },
+          { input_tokens: 10, cache_creation_input_tokens: 100, cache_read_input_tokens: 0, output_tokens: 10 }),
+        block('a2', '10:00:06', 'msg_2', { type: 'text', text: 'API Error' },
+          { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 }, '<synthetic>'),
+      ].join('\n')));
+
+      const result = parser.parseFile('/sessions/synthetic.jsonl', 'proj-1')!;
+
+      expect(result.model).toBe('claude-sonnet-4');
+      expect(result.pricingConfidence).toBe('exact');
+      expect(result.turns[2].usage).toBeUndefined();
+    });
   });
 });

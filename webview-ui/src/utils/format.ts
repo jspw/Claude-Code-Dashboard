@@ -1,5 +1,5 @@
 /** Keep in sync with PRICING_TABLE_DATE in src/parsers/SessionParser.ts */
-export const PRICING_TABLE_DATE = '2026-06';
+export const PRICING_TABLE_DATE = '2026-10';
 
 export const COST_DISCLAIMER =
   `Token usage comes from local Claude session logs. Costs are estimated from detected model pricing (table updated ${PRICING_TABLE_DATE}) and may differ from Anthropic's actual billing.`;

@@ -132,6 +132,20 @@ export interface Turn {
   attachments?: TurnAttachment[];  // files the user @-tagged in this prompt
   thinking?: string;    // extended-thinking text emitted before this turn's content
   isMeta?: boolean;     // injected by Claude Code (skill instructions, command templates), not typed
+  isCompactSummary?: boolean;  // the summary Claude Code writes after compacting the conversation
+  usage?: TurnUsage;    // the API call behind this turn; only on the first entry of each response
+}
+
+/** One API call's tokens and cost. Their sum is the session's usage. */
+export interface TurnUsage {
+  input: number;        // fresh, uncached input tokens
+  cacheWrite: number;
+  cacheWrite1h: number; // of cacheWrite, tokens written to the 1-hour cache (the rest went to the 5-minute one)
+  cacheRead: number;
+  output: number;
+  costUsd: number;
+  model: string | null;
+  compacted?: boolean;  // Claude Code compacted the conversation right before this call
 }
 
 export interface TurnAttachment {

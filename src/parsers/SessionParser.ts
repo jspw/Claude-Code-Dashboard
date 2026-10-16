@@ -1,33 +1,51 @@
 import * as fs from 'fs';
-import { QuestionAnswer, Session, Turn, ToolCall, TurnAttachment } from '../store/DashboardStore';
+import { QuestionAnswer, Session, Turn, ToolCall, TurnAttachment, TurnUsage } from '../store/DashboardStore';
 import { promptText } from './promptText';
 import { digestTurns } from './sessionDigest';
 
 /** Date the pricing table below was last synced against published Anthropic pricing. */
-export const PRICING_TABLE_DATE = '2026-06';
+export const PRICING_TABLE_DATE = '2026-10';
 
-// USD per million tokens by model family. Cache writes bill at 1.25x input
-// (5-minute TTL); cache reads at 0.1x input.
-const MODEL_COSTS: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
-  'fable':        { input: 10,  output: 50, cacheWrite: 12.5,  cacheRead: 1    }, // Fable 5 / Mythos 5
-  'opus':         { input: 5,   output: 25, cacheWrite: 6.25,  cacheRead: 0.5  }, // Opus 4.5+
-  'opus-legacy':  { input: 15,  output: 75, cacheWrite: 18.75, cacheRead: 1.5  }, // Opus 4.0 / 4.1 / Opus 3
-  'sonnet':       { input: 3,   output: 15, cacheWrite: 3.75,  cacheRead: 0.3  }, // Sonnet 4.x / Sonnet 5
-  'haiku':        { input: 1,   output: 5,  cacheWrite: 1.25,  cacheRead: 0.1  }, // Haiku 4.5
-  'haiku-legacy': { input: 0.8, output: 4,  cacheWrite: 1,     cacheRead: 0.08 }, // Haiku 3.x
-  default:        { input: 3,   output: 15, cacheWrite: 3.75,  cacheRead: 0.3  }, // unknown model → Sonnet rates
+// USD per million tokens by model family, from
+// https://platform.claude.com/docs/en/about-claude/pricing. Cache writes bill
+// at 1.25x input for the 5-minute cache and 2x for the 1-hour cache; cache
+// reads at 0.1x input, except where a model's row says otherwise.
+const MODEL_COSTS: Record<string, { input: number; output: number; cacheWrite: number; cacheWrite1h: number; cacheRead: number }> = {
+  'fable-5-1':      { input: 10,  output: 50,  cacheWrite: 12.5,  cacheWrite1h: 20,  cacheRead: 0.25 }, // Fable 5.1 / Mythos 5.1
+  'fable':          { input: 10,  output: 50,  cacheWrite: 12.5,  cacheWrite1h: 20,  cacheRead: 1    }, // Fable 5 / Mythos 5
+  'opus-5-5':       { input: 4,   output: 20,  cacheWrite: 5,     cacheWrite1h: 8,   cacheRead: 0.2  },
+  'opus':           { input: 5,   output: 25,  cacheWrite: 6.25,  cacheWrite1h: 10,  cacheRead: 0.5  }, // Opus 4.5 – 5
+  'opus-legacy':    { input: 15,  output: 75,  cacheWrite: 18.75, cacheWrite1h: 30,  cacheRead: 1.5  }, // Opus 4.0 / 4.1 / Opus 3
+  'sonnet-5-5':     { input: 2,   output: 10,  cacheWrite: 2.5,   cacheWrite1h: 4,   cacheRead: 0.1  },
+  'sonnet-5':       { input: 2,   output: 10,  cacheWrite: 2.5,   cacheWrite1h: 4,   cacheRead: 0.2  },
+  'sonnet':         { input: 3,   output: 15,  cacheWrite: 3.75,  cacheWrite1h: 6,   cacheRead: 0.3  }, // Sonnet 4.x
+  'haiku-5-5':      { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheWrite1h: 0.2, cacheRead: 0.01 }, // prompts up to 100k tokens
+  'haiku-5-5-long': { input: 0.5, output: 2.5, cacheWrite: 0.625, cacheWrite1h: 1,   cacheRead: 0.05 }, // prompts over 100k tokens
+  'haiku':          { input: 1,   output: 5,   cacheWrite: 1.25,  cacheWrite1h: 2,   cacheRead: 0.1  }, // Haiku 4.5
+  'haiku-legacy':   { input: 0.8, output: 4,   cacheWrite: 1,     cacheWrite1h: 1.6, cacheRead: 0.08 }, // Haiku 3.x
+  default:          { input: 3,   output: 15,  cacheWrite: 3.75,  cacheWrite1h: 6,   cacheRead: 0.3  }, // unknown model → Sonnet 4.x rates
 };
+
+// Haiku 5.5 prices each request by its prompt length, cache reads and writes included.
+const HAIKU_5_5_LONG_PROMPT = 100_000;
 
 export function modelKey(model: string): string {
   const m = (model || '').toLowerCase();
-  if (m.includes('fable') || m.includes('mythos')) { return 'fable'; }
+  if (m.includes('fable') || m.includes('mythos')) {
+    return /(?:fable|mythos)-5-1(?!\d)/.test(m) ? 'fable-5-1' : 'fable';
+  }
   if (m.includes('opus')) {
-    return /opus-4-[01]\b|opus-4-2025|3-opus/.test(m) ? 'opus-legacy' : 'opus';
+    if (/opus-4-[01]\b|opus-4-2025|3-opus/.test(m)) { return 'opus-legacy'; }
+    return /opus-5-5(?!\d)/.test(m) ? 'opus-5-5' : 'opus';
   }
   if (m.includes('haiku')) {
+    if (/haiku-5-5(?!\d)/.test(m)) { return 'haiku-5-5'; }
     return /haiku-[4-9]/.test(m) ? 'haiku' : 'haiku-legacy';
   }
-  if (m.includes('sonnet')) { return 'sonnet'; }
+  if (m.includes('sonnet')) {
+    if (/sonnet-5-5(?!\d)/.test(m)) { return 'sonnet-5-5'; }
+    return /sonnet-5(?!\d)/.test(m) ? 'sonnet-5' : 'sonnet';
+  }
   return 'default';
 }
 
@@ -35,6 +53,10 @@ export interface ParsedSession extends Session {
   cwd: string | null;
   isActiveSession: boolean;
 }
+
+// Claude Code's stand-in for responses that never reached the API (errors,
+// interrupts). They carry zero usage and say nothing about the session's model.
+const SYNTHETIC_MODEL = '<synthetic>';
 
 // Turns ship to the webview over postMessage — cap the bulky per-turn extras
 // so a session with huge tool outputs or long thinking stays lightweight.
@@ -88,6 +110,7 @@ export class SessionParser {
       let outputTokens = 0;
       let cacheCreationTokens = 0;
       let cacheReadTokens = 0;
+      let costUsd = 0;
       let startTime = 0;
       let lastTimestamp = 0;
       let lastStopReason: string | null = null;
@@ -104,6 +127,10 @@ export class SessionParser {
       let pendingAttachments: TurnAttachment[] = [];
       // Tool results echo back as later user entries referencing tool_use_id.
       const toolCallById = new Map<string, ToolCall>();
+      // Claude Code writes one entry per content block (thinking, text, each
+      // tool_use), and every entry of a response repeats its full usage.
+      const countedResponses = new Set<string>();
+      let compactedSinceLastCall = false;
 
       for (const line of lines) {
         try {
@@ -155,7 +182,9 @@ export class SessionParser {
 
             // Capture the first prompt the user actually typed as the session
             // summary — not injected skill instructions or command templates.
-            const prompt = entry.isMeta ? null : promptText(displayText);
+            // The summary Claude Code writes after compacting is injected context too.
+            const injected = entry.isMeta || entry.isCompactSummary;
+            const prompt = injected ? null : promptText(displayText);
             if (!sessionSummary && prompt) {
               sessionSummary = prompt.slice(0, 120) + (prompt.length > 120 ? '…' : '');
             }
@@ -170,7 +199,8 @@ export class SessionParser {
                 outputTokens: 0,
                 toolCalls: [],
                 timestamp: ts,
-                ...(entry.isMeta ? { isMeta: true } : {}),
+                ...(injected ? { isMeta: true } : {}),
+                ...(entry.isCompactSummary ? { isCompactSummary: true } : {}),
                 ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}),
               });
               pendingAttachments = [];
@@ -193,19 +223,39 @@ export class SessionParser {
             }
           }
 
+          if (entry.type === 'system' && entry.subtype === 'compact_boundary') {
+            compactedSinceLastCall = true;
+          }
+
           if (entry.type === 'assistant' && entry.message) {
-            const usage = entry.message.usage || {};
+            const responseKey = entry.message.id ? `${entry.message.id}:${entry.requestId ?? ''}` : null;
+            const firstOfResponse = responseKey === null || !countedResponses.has(responseKey);
+            if (responseKey) { countedResponses.add(responseKey); }
+
+            const usage = firstOfResponse ? entry.message.usage || {} : {};
             const inTok   = (usage.input_tokens || 0) as number;
             const outTok  = (usage.output_tokens || 0) as number;
             const cacheCreate = (usage.cache_creation_input_tokens || 0) as number;
             const cacheRead   = (usage.cache_read_input_tokens || 0) as number;
+            const cacheWrite1h = Math.min(cacheCreate, (usage.cache_creation?.ephemeral_1h_input_tokens || 0) as number);
+
+            if (entry.message.model && entry.message.model !== SYNTHETIC_MODEL) { detectedModel = entry.message.model; }
+            const callCost = this.estimateCostDetailed(inTok, outTok, cacheCreate, cacheRead, detectedModel, cacheWrite1h);
 
             inputTokens       += inTok;
             outputTokens      += outTok;
             cacheCreationTokens += cacheCreate;
             cacheReadTokens   += cacheRead;
+            costUsd           += callCost;
 
-            if (entry.message.model) { detectedModel = entry.message.model; }
+            const callUsage: TurnUsage | null = inTok + cacheCreate + cacheRead + outTok > 0
+              ? {
+                input: inTok, cacheWrite: cacheCreate, cacheWrite1h, cacheRead, output: outTok, costUsd: callCost,
+                model: detectedModel !== 'default' ? detectedModel : null,
+                ...(compactedSinceLastCall ? { compacted: true } : {}),
+              }
+              : null;
+            if (callUsage) { compactedSinceLastCall = false; }
             lastStopReason = entry.message.stop_reason ?? null;
 
             const toolCalls: ToolCall[] = [];
@@ -251,6 +301,7 @@ export class SessionParser {
               toolCalls,
               timestamp: ts,
               ...(turnThinking.trim() ? { thinking: turnThinking.trim().slice(0, THINKING_TEXT_CAP) } : {}),
+              ...(callUsage ? { usage: callUsage } : {}),
             });
           }
         } catch { /* skip malformed lines */ }
@@ -283,7 +334,6 @@ export class SessionParser {
       // Cache reads are excluded — they're cheap re-reads of existing context
       // and would inflate the number by 10-20x (e.g. 17M cache reads vs 1M real tokens)
       const totalTokens = inputTokens + cacheCreationTokens + outputTokens;
-      const costUsd = this.estimateCostDetailed(inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, detectedModel);
       // 'fallback' = no model recorded, or family not in the pricing table (priced at Sonnet rates)
       const pricingConfidence: 'exact' | 'fallback' =
         detectedModel !== 'default' && modelKey(detectedModel) !== 'default' ? 'exact' : 'fallback';
@@ -346,19 +396,27 @@ export class SessionParser {
     }
   }
 
+  /** Cost of one request. `cacheWrite1hTokens` is the part of `cacheCreationTokens` written to the 1-hour cache. */
   estimateCostDetailed(
     inputTokens: number,
     outputTokens: number,
     cacheCreationTokens: number,
     cacheReadTokens: number,
-    model: string
+    model: string,
+    cacheWrite1hTokens = 0
   ): number {
-    const rates = MODEL_COSTS[modelKey(model)] || MODEL_COSTS.default;
+    let key = modelKey(model);
+    if (key === 'haiku-5-5' && inputTokens + cacheCreationTokens + cacheReadTokens > HAIKU_5_5_LONG_PROMPT) {
+      key = 'haiku-5-5-long';
+    }
+    const rates = MODEL_COSTS[key] || MODEL_COSTS.default;
+    const cacheWrite1h = Math.min(cacheWrite1hTokens, cacheCreationTokens);
     return (
-      (inputTokens          * rates.input      / 1_000_000) +
-      (outputTokens         * rates.output     / 1_000_000) +
-      (cacheCreationTokens  * rates.cacheWrite / 1_000_000) +
-      (cacheReadTokens      * rates.cacheRead  / 1_000_000)
+      (inputTokens                          * rates.input        / 1_000_000) +
+      (outputTokens                         * rates.output       / 1_000_000) +
+      ((cacheCreationTokens - cacheWrite1h) * rates.cacheWrite   / 1_000_000) +
+      (cacheWrite1h                         * rates.cacheWrite1h / 1_000_000) +
+      (cacheReadTokens                      * rates.cacheRead    / 1_000_000)
     );
   }
 
