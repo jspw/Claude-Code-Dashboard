@@ -389,21 +389,6 @@ export class DashboardStore extends EventEmitter {
     return session;
   }
 
-  /** The first parent-session reference in a subagent log, if any. */
-  private readParentSessionId(filePath: string): string | null {
-    try {
-      for (const line of fs.readFileSync(filePath, 'utf-8').split('\n')) {
-        if (!line.trim()) { continue; }
-        try {
-          const entry = JSON.parse(line);
-          const pid = entry.parentSessionId ?? entry.parent_session_id ?? entry.parentId ?? null;
-          if (pid) { return String(pid); }
-        } catch { continue; }
-      }
-    } catch { /* unreadable: no parent */ }
-    return null;
-  }
-
   private debouncedEmitUpdated() {
     if (this.emitDebounce) { clearTimeout(this.emitDebounce); }
     this.emitDebounce = setTimeout(() => this.emit('updated'), 200);
@@ -447,8 +432,10 @@ export class DashboardStore extends EventEmitter {
   }
 
   /**
-   * Parse subagents/*.jsonl — stores the full sessions and returns a cost map
-   * keyed by parent session ID (or '__unknown__') for cost attribution.
+   * Parse the project's subagent transcripts — stores the full sessions and
+   * returns their cost keyed by parent session ID for attribution. Claude Code
+   * writes them to <project>/<sessionId>/subagents/agent-<agentId>.jsonl; each
+   * line's own `sessionId` is the parent's, so the parent is read off the folder.
    */
   private loadSubagentSessions(
     projectDir: string,
@@ -458,21 +445,27 @@ export class DashboardStore extends EventEmitter {
   ): Map<string, number> {
     const costs = new Map<string, number>();
     const parsed: Session[] = [];
-    const subagentsDir = path.join(projectDir, 'subagents');
-    if (!fs.existsSync(subagentsDir)) {
-      this.subagentSessions.set(encodedId, []);
-      return costs;
-    }
+    let sessionDirs: string[] = [];
     try {
-      for (const file of fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'))) {
-        const session = this.loadSessionFile(subagentsDir, file, encodedId, previous, into,
-          (filePath, s) => ({ ...s, parentSessionId: this.readParentSessionId(filePath) }));
+      sessionDirs = fs.readdirSync(projectDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name);
+    } catch { /* the project directory was deleted */ }
+
+    for (const parentId of sessionDirs) {
+      let files: string[];
+      try {
+        files = fs.readdirSync(path.join(projectDir, parentId, 'subagents')).filter(f => f.endsWith('.jsonl'));
+      } catch {
+        continue;   // a session that ran no subagents, or another folder such as memory/
+      }
+      for (const file of files) {
+        // Relative to the project, so the cache key stays unique across sessions.
+        const session = this.loadSessionFile(projectDir, path.join(parentId, 'subagents', file), encodedId, previous, into,
+          (_filePath, s) => ({ ...s, parentSessionId: parentId }));
         if (!session) { continue; }
         parsed.push(session);
-        const key = session.parentSessionId ?? '__unknown__';
-        costs.set(key, (costs.get(key) ?? 0) + session.costUsd);
+        costs.set(parentId, (costs.get(parentId) ?? 0) + session.costUsd);
       }
-    } catch { /* ignore */ }
+    }
     this.subagentSessions.set(encodedId, parsed);
     return costs;
   }
@@ -522,12 +515,13 @@ export class DashboardStore extends EventEmitter {
         if (sessionLatest > lastActive) { lastActive = sessionLatest; }
       }
 
-      // Attribute subagent costs: use parentSessionId when known, else newest session
+      // Attribute subagent costs to their parent session, or to the newest one
+      // when the parent's transcript is gone, so the project total stays whole.
       const newest = parsedSessions.length > 0
         ? parsedSessions.reduce((a, b) => a.startTime > b.startTime ? a : b)
         : null;
       for (const [parentId, cost] of subagentCosts) {
-        const target = (parentId !== '__unknown__' ? parsedSessions.find(s => s.id === parentId) : null) ?? newest;
+        const target = parsedSessions.find(s => s.id === parentId) ?? newest;
         if (target) {
           (target as any).subagentCostUsd = ((target as any).subagentCostUsd ?? 0) + cost;
           totalCostUsd += cost;

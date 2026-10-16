@@ -79,7 +79,7 @@ Data flows one way: `JSONL files → FileWatcher → DashboardStore → Panel.bu
 | `parsers/SessionParser.ts` | Parses JSONL → `Session` objects. Extracts tokens, costs (per-model pricing), tool calls, files, thinking tokens, cache hit rate |
 | `parsers/SettingsParser.ts` | Reads `CLAUDE.md`, `.claude/settings.json`, `.mcp.json`, `.claude/commands/*.md` |
 | `store/liveSessions.ts` | Reads (never writes) Claude Code's `~/.claude/sessions/<pid>.json`: live PID, same process via `ps` start time vs `procStart` (UTC), and `status` busy/waiting/idle |
-| `watchers/FileWatcher.ts` | `fs.watch()` on `~/.claude/projects/*.jsonl`, debounces 300ms, calls `store.onFileChanged()`; also watches `~/.claude/sessions/` → `store.refreshLiveSessions()` |
+| `watchers/FileWatcher.ts` | `fs.watch()` on `~/.claude/projects/**/*.jsonl` (sessions and `<sessionId>/subagents/agent-*.jsonl`), debounces 300ms, calls `store.onFileChanged()`; also watches `~/.claude/sessions/` → `store.refreshLiveSessions()` |
 | `watchers/EventWatcher.ts` | Polls `~/.claude/.dashboard-events.jsonl` every 500ms for live tool_use/session_stop events |
 | `hooks/HookManager.ts` | Injects/removes PostToolUse+Stop hooks in `~/.claude/settings.json` (with user consent). Hooks are armed by a `~/.claude/.dashboard-live` marker and no-op without it |
 | `hooks/stripDashboardHooks.ts` | Pure helper that strips dashboard hook entries from a parsed settings object (shared with uninstall) |

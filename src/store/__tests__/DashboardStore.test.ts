@@ -488,7 +488,6 @@ describe('DashboardStore', () => {
       const value = String(target);
       return value === '/claude/projects'
         || value === '/claude/projects/demo'
-        || value === '/claude/projects/demo/subagents'
         || value === '/claude/sessions'
         || value === '/cache/project-cache.json'
         || value === '/workspace/demo';
@@ -502,10 +501,21 @@ describe('DashboardStore', () => {
         return ['demo'] as unknown as ReturnType<typeof fs.readdirSync>;
       }
       if (value === '/claude/projects/demo') {
+        // Subagents live in a folder named after their parent session; memory/ has none.
+        if (options && typeof options === 'object' && 'withFileTypes' in (options as Record<string, unknown>)) {
+          return [
+            { name: 'session.jsonl', isDirectory: () => false },
+            { name: 'main-session', isDirectory: () => true },
+            { name: 'memory', isDirectory: () => true },
+          ] as unknown as ReturnType<typeof fs.readdirSync>;
+        }
         return ['session.jsonl', 'notes.txt'] as unknown as ReturnType<typeof fs.readdirSync>;
       }
-      if (value === '/claude/projects/demo/subagents') {
-        return ['child.jsonl'] as unknown as ReturnType<typeof fs.readdirSync>;
+      if (value === '/claude/projects/demo/main-session/subagents') {
+        return ['agent-child.jsonl', 'agent-child.meta.json'] as unknown as ReturnType<typeof fs.readdirSync>;
+      }
+      if (value === '/claude/projects/demo/memory/subagents') {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       }
       if (value === '/claude/sessions') {
         return ['alive.json', 'dead.json', 'bad.json'] as unknown as ReturnType<typeof fs.readdirSync>;
@@ -536,9 +546,6 @@ describe('DashboardStore', () => {
       if (value.endsWith('/bad.json')) {
         return '{bad' as ReturnType<typeof fs.readFileSync>;
       }
-      if (value.endsWith('child.jsonl')) {
-        return `${JSON.stringify({ parentSessionId: 'main-session' })}\n` as ReturnType<typeof fs.readFileSync>;
-      }
       return '' as ReturnType<typeof fs.readFileSync>;
     });
     vi.spyOn(process, 'kill').mockImplementation(((pid: number) => {
@@ -559,6 +566,7 @@ describe('DashboardStore', () => {
     expect(store.getSessions('demo')[0].isActiveSession).toBe(true);
     expect(store.getSessions('demo')[0].subagentCostUsd).toBe(0.3);
     expect(store.getSubagentSessions('demo')).toHaveLength(1);
+    expect(store.getSubagentSessions('demo')[0].parentSessionId).toBe('main-session');
     // Claude Code owns the session files; a dead session's file is left for it to clear.
     expect(fs.unlinkSync).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(CACHE_SAVE_DELAY_MS);
@@ -575,7 +583,7 @@ describe('DashboardStore', () => {
             demo: {
               project: makeProject({ id: 'demo', name: 'demo', path: '/workspace/demo', isActive: false }),
               files: { 'session.jsonl': { mtimeMs: NOW - 2000, session: makeSession({ id: 'cached-session', projectId: 'demo', isActiveSession: false, turns: [] }) } },
-              subagentFiles: { 'child.jsonl': { mtimeMs: NOW, session: makeSession({ id: 'cached-child', projectId: 'demo', turns: [] }) } },
+              subagentFiles: { [path.join('main-session', 'subagents', 'agent-child.jsonl')]: { mtimeMs: NOW, session: makeSession({ id: 'cached-child', projectId: 'demo', turns: [] }) } },
             },
           },
         }) as ReturnType<typeof fs.readFileSync>;
@@ -744,13 +752,15 @@ describe('DashboardStore', () => {
 
     it('does not double-count subagent cost when a cached session is reused', async () => {
       const store = new DashboardStore('/claude');
-      vi.mocked(fs.existsSync).mockImplementation(p => String(p).endsWith('/subagents'));
-      vi.mocked(fs.readdirSync).mockImplementation(p =>
-        (String(p).endsWith('/subagents') ? ['child.jsonl'] : ['main.jsonl']) as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.readdirSync).mockImplementation(((p: unknown, options?: unknown) => {
+        if (String(p).endsWith('/main/subagents')) { return ['agent-child.jsonl']; }
+        if (options) { return [{ name: 'main', isDirectory: () => true }]; }
+        return ['main.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
       vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 10 } as fs.Stats);
       vi.mocked(fs.readFileSync).mockReturnValue('' as ReturnType<typeof fs.readFileSync>);
       vi.spyOn((store as any).sessionParser, 'parseFile').mockImplementation((file: unknown) =>
-        String(file).endsWith('child.jsonl') ? makeSession({ id: 'child', costUsd: 0.3 }) : makeSession({ id: 'main', costUsd: 1 }));
+        String(file).endsWith('agent-child.jsonl') ? makeSession({ id: 'agent-child', costUsd: 0.3 }) : makeSession({ id: 'main', costUsd: 1 }));
       const live = { sessions: new Map(), available: true };
 
       await (store as any).loadProject('p1', '/claude/projects/p1', live);
