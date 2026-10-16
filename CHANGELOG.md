@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.12.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.11.1...claude-code-dashboard-v1.12.0) (2026-10-16)
+
+
+### Features
+
+* add session file diffs and live session status, fix subagent loading ([#53](https://github.com/jspw/Claude-Code-Dashboard/issues/53)) ([06036fa](https://github.com/jspw/Claude-Code-Dashboard/commit/06036fa81697f7f8cd662b00e6655fa3c5b00969))
+
 ## [1.11.1](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.11.0...claude-code-dashboard-v1.11.1) (2026-10-14)
 
 
