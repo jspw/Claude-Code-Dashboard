@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.13.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.12.0...claude-code-dashboard-v1.13.0) (2026-10-16)
+
+
+### Features
+
+* chart context and cost per call, fix cost double-counting and pricing ([#55](https://github.com/jspw/Claude-Code-Dashboard/issues/55)) ([56dbaad](https://github.com/jspw/Claude-Code-Dashboard/commit/56dbaad6bbad40f3e9681836092e0be97a98cdd6))
+
 ## [1.12.0](https://github.com/jspw/Claude-Code-Dashboard/compare/claude-code-dashboard-v1.11.1...claude-code-dashboard-v1.12.0) (2026-10-16)
 
 
